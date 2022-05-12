@@ -1,0 +1,14 @@
+{
+  "scopedRegistries": [
+    {
+      "name": "OpenUPM",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.anatawa12"
+      ]
+    }
+  ],
+  "dependencies": {
+    "com.anatawa12.custom-localization-for-editor-extension": "1.10"
+  }
+}
