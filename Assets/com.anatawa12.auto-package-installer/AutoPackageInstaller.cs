@@ -143,6 +143,7 @@ namespace Anatawa12.AutoPackageInstaller
             var path = AssetDatabase.GUIDToAssetPath(guid);
             if (File.Exists(path))
             {
+                EditorUtility.SetDirty(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
                 try
                 {
                     File.Delete(path);
@@ -155,6 +156,7 @@ namespace Anatawa12.AutoPackageInstaller
             }
             else if (Directory.Exists(path))
             {
+                EditorUtility.SetDirty(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
                 try
                 {
                     Directory.Delete(path);
