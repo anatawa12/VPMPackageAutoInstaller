@@ -9,6 +9,6 @@
     }
   ],
   "dependencies": {
-    "com.anatawa12.custom-localization-for-editor-extension": "1.10"
+    "com.anatawa12.custom-localization-for-editor-extension": "0.1.10"
   }
 }
