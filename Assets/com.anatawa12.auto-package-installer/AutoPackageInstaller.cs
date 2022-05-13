@@ -69,7 +69,7 @@ namespace Anatawa12.AutoPackageInstaller
             {
                 var value = dependencies.Get(key, JsonType.String);
                 var version = manifestDependencies.Get(key, JsonType.String, true);
-                if (version == null || new Version(version).CompareTo(new Version(value)) < 0)
+                if (version == null || ShouldUpdatePackage(version, value))
                     manifestDependencies.Put(key, value, JsonType.String);
             }
 
@@ -83,6 +83,21 @@ namespace Anatawa12.AutoPackageInstaller
             }
             File.WriteAllText(ManifestPath, JsonWriter.Write(manifest));
             SetDirty(ManifestPath);
+        }
+
+        private static bool ShouldUpdatePackage(string current, string value)
+        {
+            try
+            {
+                Version currentVersion = new Version(current);
+                Version valueVersion = new Version(value);
+                return currentVersion.CompareTo(valueVersion) < 0;
+            }
+            catch (Exception e)
+            {
+                // non-semver
+                return true;
+            }
         }
 
         private readonly struct Version : IComparable<Version>
