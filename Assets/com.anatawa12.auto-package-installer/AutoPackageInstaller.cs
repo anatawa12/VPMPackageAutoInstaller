@@ -146,6 +146,7 @@ namespace Anatawa12.AutoPackageInstaller
                 try
                 {
                     File.Delete(path);
+                    File.Delete(path + ".meta");
                 }
                 catch (IOException e)
                 {
@@ -157,6 +158,7 @@ namespace Anatawa12.AutoPackageInstaller
                 try
                 {
                     Directory.Delete(path);
+                    File.Delete(path + ".meta");
                 }
                 catch (IOException e)
                 {
