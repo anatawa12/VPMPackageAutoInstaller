@@ -31,6 +31,10 @@ namespace Anatawa12.AutoPackageInstaller
             RemoveSelf();
         }
 
+        public AutoPackageInstaller()
+        {
+        }
+
         public static void DoInstall()
         {
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
@@ -78,6 +82,7 @@ namespace Anatawa12.AutoPackageInstaller
                 Debug.LogError($"error during creating backup: {e}");
             }
             File.WriteAllText(ManifestPath, JsonWriter.Write(manifest));
+            SetDirty(ManifestPath);
         }
 
         private readonly struct Version : IComparable<Version>
@@ -143,7 +148,7 @@ namespace Anatawa12.AutoPackageInstaller
             var path = AssetDatabase.GUIDToAssetPath(guid);
             if (File.Exists(path))
             {
-                EditorUtility.SetDirty(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
+                SetDirty(path);
                 try
                 {
                     File.Delete(path);
@@ -156,7 +161,7 @@ namespace Anatawa12.AutoPackageInstaller
             }
             else if (Directory.Exists(path))
             {
-                EditorUtility.SetDirty(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
+                SetDirty(path);
                 try
                 {
                     Directory.Delete(path);
@@ -167,6 +172,12 @@ namespace Anatawa12.AutoPackageInstaller
                     Debug.LogError($"error removing installer: {e}");
                 }
             }
+        }
+
+        private static void SetDirty(string path)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (asset != null) EditorUtility.SetDirty(asset);
         }
     }
 
