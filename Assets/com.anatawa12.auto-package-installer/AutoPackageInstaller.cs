@@ -80,9 +80,20 @@ namespace Anatawa12.AutoPackageInstaller
                 foreach (var obj in configRegistries)
                 {
                     var url = obj.Get("url", JsonType.String);
-                    if (manifestScopedRegistries.FirstOrDefault(p => JsonType.Obj.Cast(p).Get("url", JsonType.String) == url) == null)
+                    var repository = manifestScopedRegistries.Select(p => JsonType.Obj.Cast(p)).FirstOrDefault(p => p.Get("url", JsonType.String) == url);
+                    if (repository == null)
                     {
                         manifestScopedRegistries.Add(obj);
+                    }
+                    else
+                    {
+                        var manifestScopes = repository.Get("scopes", JsonType.List);
+
+                        foreach (var scope in obj.Get("scopes", JsonType.List))
+                        {
+                            if (!manifestScopes.Contains(scope))
+                                manifestScopes.Add(scope);
+                        }
                     }
                 }
             }
