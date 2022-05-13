@@ -72,3 +72,10 @@ If your package has some dependency packages on git, you should add to dependenc
 }
 
 ```
+
+## How this works
+
+This uses `InitializeOnLoad` attribute to run some script on unpacked `unitypackage` and
+on `InitializeOnLoad`, modifies `manifest.json` based on `config.json`. 
+Just after modification, this package deletes files & folders of this project based on `GUID`.
+GUID of C#, `config.json`, and `com.anatawa12.auto-package-installer` are hard-coded.
