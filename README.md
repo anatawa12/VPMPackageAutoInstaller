@@ -25,39 +25,7 @@ only `dependencies` and `scopedRegistries` tag are supported.
 
 [manifest-json-unity]: https://docs.unity3d.com/current/Manual/upm-manifestPrj.html
 
-### Examples
-
-<!--
-TODO: upload my package to openupm and uncomment
-
-#### [OpenUPM][openupm] provided packages
-
-This example shows installer package for [com.anatawa12.editor-extension on openupm][anatawa12-editor-extension-openupm].
-Please replace `"com.anatawa12.editor-extension": "0.1.0"` with your package name & version.
-If you have some dependencies on your package, please add to "dependencies" block.
-
-[anatawa12-editor-extension-openupm]: https://openupm.com/packages/com.anatawa12.editor-extension 
-[openupm]: https://openupm.com/
-
-```json
-{
-  "scopedRegistries": [
-    {
-      "name": "OpenUPM",
-      "url": "https://package.openupm.com",
-      "scopes": [
-        "com.anatawa12"
-      ]
-    }
-  ],
-  "dependencies": {
-    "com.anatawa12.editor-extension": "0.1.0"
-  }
-}
-```
--->
-
-#### Git-provided packages
+### Example
 
 This example shows installer package for <https://github.com/anatawa12/VRC-Unity-extension>.
 Please replace `https://github.com/anatawa12/VRC-Unity-extension.git` and `com.anatawa12.editor-extension`
