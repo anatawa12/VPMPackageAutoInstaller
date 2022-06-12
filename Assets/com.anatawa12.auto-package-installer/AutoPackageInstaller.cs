@@ -73,33 +73,6 @@ namespace Anatawa12.AutoPackageInstaller
             var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
             var manifest = new JsonParser(File.ReadAllText(ManifestPath, Encoding.UTF8)).Parse(JsonType.Obj);
 
-            var configRegistries = config.Get("scopedRegistries", JsonType.List, true)?.Select(v => JsonType.Obj.Cast(v));
-            if (configRegistries != null)
-            {
-                var manifestScopedRegistries = manifest.GetOrPut("scopedRegistries", () => new List<object>(), JsonType.List);
-                foreach (var obj in configRegistries)
-                {
-                    var url = obj.Get("url", JsonType.String);
-                    var repository = manifestScopedRegistries.Select(p => JsonType.Obj.Cast(p)).FirstOrDefault(p => p.Get("url", JsonType.String) == url);
-                    if (repository == null)
-                    {
-                        manifestScopedRegistries.Add(obj);
-                    }
-                    else
-                    {
-                        var manifestScopes = repository.Get("scopes", JsonType.List);
-
-                        foreach (var scope in obj.Get("scopes", JsonType.List))
-                        {
-                            if (!manifestScopes.Contains(scope))
-                                manifestScopes.Add(scope);
-                        }
-                    }
-                }
-            }
-
-            JsonWriter.Write(manifest);
-
             var dependencies = config.Get("dependencies", JsonType.Obj);
             var manifestDependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
             foreach (var key in dependencies.Keys)
@@ -118,6 +91,7 @@ namespace Anatawa12.AutoPackageInstaller
             {
                 Debug.LogError($"error during creating backup: {e}");
             }
+
             File.WriteAllText(ManifestPath, JsonWriter.Write(manifest));
             SetDirty(ManifestPath);
         }
