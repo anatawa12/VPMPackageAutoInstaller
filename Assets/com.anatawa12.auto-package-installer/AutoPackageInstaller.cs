@@ -72,6 +72,9 @@ namespace Anatawa12.AutoPackageInstaller
 
         public static void DoInstall()
         {
+            if (!EditorUtility.DisplayDialog("Confirm", "You're installing some packages.", 
+                    "Install", "Cancel"))
+                return;
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
             {
