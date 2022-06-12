@@ -1,7 +1,9 @@
 {
     "name": "com.anatawa12.auto-package-installer",
     "references": [],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
