@@ -41,9 +41,16 @@ namespace Anatawa12.AutoPackageInstaller
     {
         private const string TesterGuid = "40f4470be29a43a792b7c41576813ea3";
         private const string ConfigGuid = "9028b92d14f444e2b8c389be130d573f";
-        private const string InstallerGuid = "30732659753784f469c8c521aa469152";
-        private const string FolderGuid = "4b344df74d4849e3b2c978b959abd31b";
         private const string ManifestPath = "Packages/manifest.json";
+
+        private static readonly string[] ToBeRemoved = 
+        {
+            ConfigGuid,
+            // the C# file
+            "30732659753784f469c8c521aa469152",
+            // the folder
+            "4b344df74d4849e3b2c978b959abd31b",
+        };
 
         static AutoPackageInstaller()
         {
@@ -164,9 +171,10 @@ namespace Anatawa12.AutoPackageInstaller
 
         public static void RemoveSelf()
         {
-            RemoveFileAsset(ConfigGuid);
-            RemoveFileAsset(InstallerGuid);
-            RemoveFileAsset(FolderGuid);
+            foreach (var remove in ToBeRemoved)
+            {
+                RemoveFileAsset(remove);
+            }
         }
 
         private static void RemoveFileAsset(string guid)
