@@ -48,6 +48,8 @@ namespace Anatawa12.AutoPackageInstaller
             ConfigGuid,
             // the C# file
             "30732659753784f469c8c521aa469152",
+            // the asmdef file
+            "f7306773db58a40f2b8c5b6ed99db57b",
             // the folder
             "4b344df74d4849e3b2c978b959abd31b",
         };
