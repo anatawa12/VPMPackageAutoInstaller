@@ -202,6 +202,7 @@ namespace Anatawa12.AutoPackageInstaller
             {
                 RemoveFileAsset(remove);
             }
+            AssetDatabase.Refresh();
         }
 
         private static void RemoveFileAsset(string guid)
