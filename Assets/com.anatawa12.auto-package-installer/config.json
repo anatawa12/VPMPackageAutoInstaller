@@ -1,14 +1,5 @@
 {
-  "scopedRegistries": [
-    {
-      "name": "OpenUPM",
-      "url": "https://package.openupm.com",
-      "scopes": [
-        "com.anatawa12"
-      ]
-    }
-  ],
   "dependencies": {
-    "com.anatawa12.custom-localization-for-editor-extension": "0.1.10"
+    "com.anatawa12.editor-extension": "https://github.com/anatawa12/VRC-Unity-extension.git"
   }
 }
