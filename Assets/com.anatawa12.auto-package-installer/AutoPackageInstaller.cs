@@ -94,7 +94,7 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             if (!EditorUtility.DisplayDialog("Confirm", "You're installing the following packages:\n"
-                     + string.Join("\n", updates.Select((p) => $"{p.key} version {p.value}")), 
+                     + string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}")), 
                     "Install", "Cancel"))
                 return;
 
@@ -114,12 +114,28 @@ namespace Anatawa12.AutoPackageInstaller
             SetDirty(ManifestPath);
         }
 
+        private static string GetVersionName(string versionOrGitUrl)
+        {
+            if (versionOrGitUrl.StartsWith("git") || versionOrGitUrl.Contains(".git"))
+            {
+                var index = versionOrGitUrl.IndexOf('#');
+                if (index == -1)
+                    return "latest";
+                var name = versionOrGitUrl.Substring(index);
+                if (name.StartsWith("v"))
+                    name = name.Substring(1);
+                return name;
+            }
+
+            return versionOrGitUrl;
+        }
+
         private static bool ShouldUpdatePackage(string current, string value)
         {
             try
             {
-                Version currentVersion = new Version(current);
-                Version valueVersion = new Version(value);
+                Version currentVersion = new Version(GetVersionName(current));
+                Version valueVersion = new Version(GetVersionName(value));
                 return currentVersion.CompareTo(valueVersion) < 0;
             }
             catch (Exception e)
