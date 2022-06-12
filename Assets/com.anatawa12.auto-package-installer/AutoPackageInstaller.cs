@@ -72,9 +72,6 @@ namespace Anatawa12.AutoPackageInstaller
 
         public static void DoInstall()
         {
-            if (!EditorUtility.DisplayDialog("Confirm", "You're installing some packages.", 
-                    "Install", "Cancel"))
-                return;
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
             {
@@ -85,6 +82,7 @@ namespace Anatawa12.AutoPackageInstaller
             var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
             var manifest = new JsonParser(File.ReadAllText(ManifestPath, Encoding.UTF8)).Parse(JsonType.Obj);
 
+            var updates = new List<(string key, string value)>();
             var dependencies = config.Get("dependencies", JsonType.Obj);
             var manifestDependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
             foreach (var key in dependencies.Keys)
@@ -92,8 +90,16 @@ namespace Anatawa12.AutoPackageInstaller
                 var value = dependencies.Get(key, JsonType.String);
                 var version = manifestDependencies.Get(key, JsonType.String, true);
                 if (version == null || ShouldUpdatePackage(version, value))
-                    manifestDependencies.Put(key, value, JsonType.String);
+                    updates.Add((key, value));
             }
+
+            if (!EditorUtility.DisplayDialog("Confirm", "You're installing the following packages:\n"
+                     + string.Join("\n", updates.Select((p) => $"{p.key} version {p.value}")), 
+                    "Install", "Cancel"))
+                return;
+
+            foreach (var (key, value) in updates)
+                manifestDependencies.Put(key, value, JsonType.String);
 
             try
             {
