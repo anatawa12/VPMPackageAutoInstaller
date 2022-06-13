@@ -8,6 +8,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: anatawa12/something-releaser@v2
+      - name: release
+        run: |
+          set-git-user "anatawa12-bot"
+          VERSION="$(get-version)"
+          if ! [[ "$VERSION" = *-SNAPSHOT ]]; then
+            echo 'VERSION IS NOT SNAPSHOT' >&2
+            exit 1
+          fi
+          VERSION="$(version-unsnapshot "$VERSION")"
+          set-version "$VERSION"
+
+          git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+          git commit -m "$VERSION"
+          git tag "$VERSION"
+
       - name: create package and publish release
         id: mk-pkg
         env:
@@ -23,8 +39,19 @@ jobs:
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
           cp installer-template.unitypackage "$tmp/"
           cp building/index.html "$tmp/"
-          rm -rf * .* || true
-          echo "::set-output name=tmp::$tmp"
+          gh-set-output "tmp" "$tmp"
+
+      - name: prepare next release & push
+        run: |
+          VERSION="$(get-version)"
+          VERSION="$(version-next "$VERSION")"
+          set-version "$(version-snapshot "$VERSION")"
+          git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+          git commit -m "prepare for next version: $VERSION"
+          git push && git push --tags
+
+      - name: remove repo
+        run: rm -rf * .* || true
 
       - uses: actions/checkout@v3
         with:
@@ -36,8 +63,6 @@ jobs:
         shell: bash
         run: |
           cp "$tmp/"* .
-          git config --global user.email "87023934+anatawa12-bot@users.noreply.github.com"
-          git config --global user.name "anatawa12-bot"
           git add .
           git commit -m "update"
           git push
