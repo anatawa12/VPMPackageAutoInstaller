@@ -20,7 +20,7 @@ jobs:
           gh release upload "$TAG" \
             "installer-template.unitypackage"
 
-          tmp="$(mktemp -dt "$(basename $0).$$")"
+          tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
           cp installer-template.unitypackage "$tmp/"
           cp building/index.html "$tmp/"
           rm -rf * .*
