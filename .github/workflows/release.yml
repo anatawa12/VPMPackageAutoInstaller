@@ -23,7 +23,7 @@ jobs:
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
           cp installer-template.unitypackage "$tmp/"
           cp building/index.html "$tmp/"
-          rm -rf * .*
+          rm -rf * .* || true
           echo "::set-output name=tmp::$tmp"
 
       - uses: actions/checkout@v3
