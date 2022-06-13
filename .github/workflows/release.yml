@@ -21,6 +21,7 @@ jobs:
           git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
           git commit -m "$VERSION"
           git tag "v$VERSION"
+          git push origin "v$VERSION"
 
       - name: create package and publish release
         id: mk-pkg
@@ -31,7 +32,7 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           python3 building/build-unitypackage.py installer-template.unitypackage \
             Assets/com.anatawa12.auto-package-installer
-          gh release upload "$TAG" \
+          gh release create "$TAG" \
             "installer-template.unitypackage"
 
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
