@@ -1,6 +1,6 @@
 {
   "name": "com.anatawa12.auto-package-installer.creator",
-  "version": "0.1.3-SNAPSHOT",
+  "version": "0.1.3",
   "displayName": "AutoPackageInstaller Creator",
   "description": "The tool to create AutoPackageInstaller bundle creation",
   "author":{
