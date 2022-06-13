@@ -1,0 +1,21 @@
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: create package and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run:
+          TAG="${GITHUB_REF#refs/tags/}"
+          python3 building/build-unitypackage.py installer-template.unitypackage \
+            Assets/com.anatawa12.auto-package-installer
+          gh release create "$TAG" \
+            --notes "version $TAG" \
+            "installer-template.unitypackage"
