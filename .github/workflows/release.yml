@@ -9,6 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: create package and publish release
+        id: mk-pkg
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -18,3 +19,22 @@ jobs:
             Assets/com.anatawa12.auto-package-installer
           gh release upload "$TAG" \
             "installer-template.unitypackage"
+
+          tmp="$(mktemp -dt "$(basename $0).$$")"
+          cp installer-template.unitypackage "$tmp/"
+          cp building/index.html "$tmp/"
+          rm -rf * .*
+          echo "::set-output name=tmp::$tmp"
+
+      - uses: actions/checkout@v3
+        with:
+          ref: gh-pages
+      - name: publish github pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          tmp: ${{ steps.mk-pkg.outputs.tmp }}
+        shell: bash
+        run: |
+          cp "$tmp/"* .
+          git commit -am "update"
+          git push
