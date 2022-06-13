@@ -38,5 +38,6 @@ jobs:
           cp "$tmp/"* .
           git config --global user.email "87023934+anatawa12-bot@users.noreply.github.com"
           git config --global user.name "anatawa12-bot"
-          git commit -am "update"
+          git add .
+          git commit -m "update"
           git push
