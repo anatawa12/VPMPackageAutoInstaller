@@ -22,7 +22,7 @@ jobs:
 
           git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
           git commit -m "$VERSION"
-          git tag "$VERSION"
+          git tag "v$VERSION"
 
       - name: create package and publish release
         id: mk-pkg
