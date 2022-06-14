@@ -21,7 +21,7 @@ Easier way will be provided on web but not yet.
 ## Config format
 
 The format of `config.json` is almost same as [`manifest.json`][manifest-json-unity] but 
-only `dependencies` and `scopedRegistries` tag are supported.
+only `dependencies` tag is supported.
 
 [manifest-json-unity]: https://docs.unity3d.com/current/Manual/upm-manifestPrj.html
 
