@@ -246,12 +246,17 @@ if (typeof Deno != "undefined") {
   }
 
   window.create = async function create() {
-    const config = document.getElementById("config").textContent;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([await createPackage(config)]));
-    a.download = "installer.unitypackage"
-    a.textContent = "test"
-    a.click()
+    try {
+      const config = document.getElementById("config").textContent;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([await createPackage(config)]));
+      a.download = "installer.unitypackage"
+      a.textContent = "test"
+      a.click()
+    } catch (e) {
+      alert("error creating installer");
+      throw e;
+    }
   }
 } else {
   throw new Error("unsupported runtime");
