@@ -3,6 +3,9 @@
   "version": "0.1.4-SNAPSHOT",
   "displayName": "AutoPackageInstaller Creator",
   "description": "The tool to create AutoPackageInstaller bundle creation",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "2.0.2"
+  },
   "author":{
     "name": "anatawa12",
     "url": "https://anatawa12.com/"
