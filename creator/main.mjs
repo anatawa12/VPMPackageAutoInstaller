@@ -228,10 +228,7 @@ if (typeof Deno != "undefined") {
 } else if (typeof window != "undefined") {
   //console.info("browser detected");
   async function downloadTemplate() {
-    let url = location.href
-    url = url.substring(0, url.indexOf('/'));
-    url += "/installer-template.unitypackage";
-    const res = await fetch(url, {
+    const res = await fetch("./installer-template.unitypackage", {
       mode: 'same-origin',
     });
     return new Uint8Array(await res.arrayBuffer());
