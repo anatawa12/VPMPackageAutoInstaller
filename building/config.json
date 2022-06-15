@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "com.anatawa12.auto-package-installer.creator": "https://github.com/anatawa12/AutoPackageInstaller.git?path=Packages/com.anatawa12.auto-package-installer.creator#%%%TAG_NAME%%%"
+  }
+}

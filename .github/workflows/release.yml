@@ -18,7 +18,20 @@ jobs:
           VERSION="$(version-unsnapshot "$VERSION")"
           set-version "$VERSION"
 
-          git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+          CREATOR_PKG_ROOT="Packages/com.anatawa12.auto-package-installer.creator"
+
+          # create installer unitypackage
+          python3 building/build-unitypackage.py installer-template.unitypackage \
+            Assets/com.anatawa12.auto-package-installer
+
+          # add to creator unity package
+          cp installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage"
+          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage"
+
+          # git add to commit version name changes
+          git add "$CREATOR_PKG_ROOT/package.json"
+          git add "creator/main.mjs"
+
           git commit -m "$VERSION"
           git tag "v$VERSION"
           git push origin "v$VERSION"
@@ -31,10 +44,20 @@ jobs:
         run: |
           VERSION="$(get-version)"
           TAG="v$VERSION"
-          python3 building/build-unitypackage.py installer-template.unitypackage \
-            Assets/com.anatawa12.auto-package-installer
+
+          # create creator installer unity package
+          export USE_LOCAL_PREBUILT=true
+          cp building/config.json building/config.json.bak
+          sed "s/%%%TAG_NAME%%%/$TAG/" < building/config.json.bak > building/config.json
+          node creator/creator.mjs building/config.json installer.unitypackage
+          rm building/config.json
+          mv building/config.json.bak building/config.json
+
+          # upload release assets
           gh release create "$TAG" \
-            "installer-template.unitypackage"
+            "installer-creator.unitypackage" \
+            "installer-template.unitypackage" \
+            "creator/creator.mjs" \
 
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
           cp installer-template.unitypackage "$tmp/"
