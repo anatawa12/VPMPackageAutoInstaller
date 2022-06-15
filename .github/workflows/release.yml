@@ -69,7 +69,10 @@ jobs:
           VERSION="$(get-version)"
           VERSION="$(version-next "$VERSION")"
           set-version "$(version-snapshot "$VERSION")"
-          git add "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+          CREATOR_PKG_ROOT="Packages/com.anatawa12.auto-package-installer.creator"
+          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage"
+          git add "$CREATOR_PKG_ROOT/package.json"
+          git add "creator/main.mjs"
           git commit -m "prepare for next version: $VERSION"
           git push && git push --tags
 
