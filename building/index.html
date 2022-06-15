@@ -3,6 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <title>AutoPackageInstallerGenerator</title>
+    <style>
+        html, #main {
+            width: 100%;
+            height: 100%;
+        }
+        body {
+            margin: 8px;
+            width: calc(100% - 16px);
+            height: calc(100% - 16px);
+        }
+        #config {
+            box-sizing: border-box;
+            resize: none;
+            width: 100%;
+            height: calc(100% - 30px);
+        }
+    </style>
 </head>
 <body>
 <div id="old-message">
@@ -19,80 +36,19 @@
     </ul>
 </div>
 <div id="main" hidden>
-    <textarea id="config" style="resize: none">{
+    <textarea id="config">{
   "dependencies": {
     "com.anatawa12.editor-extension": "https://github.com/anatawa12/VRC-Unity-extension.git"
   }
-}</textarea>
+}
+</textarea>
     <button onclick="create()">create installer</button>
 </div>
 <script type="module">
-    // esmodule test
-    import _tarts from "https://cdn.jsdelivr.net/npm/tarts@2.0.1/tarts.js";
-    // top level await check
-    await new Promise(resolve => resolve());
-    document.getElementById("old-message").hidden = true;
-    document.getElementById("main").hidden = false;
+  await new Promise(resolve => resolve());
+  document.getElementById("old-message").hidden = true;
+  document.getElementById("main").hidden = false;
 </script>
-<script src="https://cdn.jsdelivr.net/npm/js-untar@2.0.0/build/dist/untar.js"></script>
-<script type="module">
-    import init, {compressGzip, decompressGzip} from "https://cdn.jsdelivr.net/npm/wasm-gzip@1.0.1/wasm_gzip.js";
-    import tarts from "https://cdn.jsdelivr.net/npm/tarts@2.0.1/tarts.js";
-
-    const main = document.getElementById("main")
-
-    let downloadedTemplate;
-
-    async function downloadTemplate() {
-        let url = location.href
-        url = url.substring(0, url.indexOf('/'));
-        url += "/installer-template.unitypackage";
-        const res = await fetch(url, {
-            mode: 'same-origin',
-        });
-        downloadedTemplate = new Uint8Array(await res.arrayBuffer())
-    }
-
-    await Promise.all([init(), downloadTemplate()]);
-
-    async function createPackage(config) {
-        let decompressed = decompressGzip(downloadedTemplate);
-        let files = await untar(decompressed.buffer);
-
-        for (const f of files) {
-            f.content = new Uint8Array(f.buffer);
-            if (f.name === "./9028b92d14f444e2b8c389be130d573f/asset")
-                f.content = config;
-            f.typeflag = f.type;
-            f.prefix = f.namePrefix;
-            f.mtime = 0;
-            delete f.checksum;
-            delete f.ustarFormat;
-
-            delete f.mtime
-            delete f.chksum
-            delete f.version
-            delete f.padding
-            delete f.version
-            delete f.devmajor
-            delete f.devminor
-            delete f.uname
-            delete f.gname
-        }
-
-        return compressGzip(tarts(files));
-    }
-
-    window.create = async function create() {
-        const config = document.getElementById("config").textContent;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([await createPackage(config)]));
-        a.download = "installer.unitypackage"
-        a.textContent = "test"
-        a.click()
-    }
-
-    //'https://raw.githubusercontent.com/Sayamame-beans/VRCPhysBone-Relocator/master/package.json'
-</script>
+<script type="module" src="main.mjs"></script>
 </body>
 </html>
