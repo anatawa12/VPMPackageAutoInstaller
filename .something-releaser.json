@@ -1,6 +1,13 @@
 {
-  "releaseChanger": [{
-    "changer": "npm",
-    "path": "Packages/com.anatawa12.auto-package-installer.creator/package.json"
-  }]
+  "releaseChanger": [
+    {
+     "changer": "npm",
+     "path": "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+    },
+    {
+      "changer": "regex-pattern",
+      "path": "creator/main.mjs",
+      "info": "let INSTALLER_VERSION = \"$1\";"
+    }
+  ]
 }
