@@ -139,8 +139,6 @@ function saveOctal(buf, offset, len, value, octalLen = 0) {
   }
 }
 
-return makeTarWithJson
-
 let INSTALLER_VERSION = "0.1.4-SNAPSHOT";
 
 if (typeof Deno != "undefined") {
