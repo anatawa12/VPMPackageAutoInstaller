@@ -153,7 +153,7 @@ if (typeof Deno != "undefined") {
   await Deno.permissions.request({name: "write", path: outputPath});
 
   let templateUrl;
-  if (INSTALLER_VERSION.endsWith("-SNAPSHOT") || Number(Deno.env.USE_PREBUILT)) {
+  if (INSTALLER_VERSION.endsWith("-SNAPSHOT") || Number(Deno.env.USE_LOCAL_PREBUILT)) {
     templateUrl = new URL("../installer-template.unitypackage", import.meta.url);
     if (templateUrl.protocol === 'file:')
       await Deno.permissions.request({name: "read", path: templateUrl.pathname});
@@ -195,7 +195,7 @@ if (typeof Deno != "undefined") {
   const {promisify} = await import('node:util');
 
   let template;
-  if (INSTALLER_VERSION.endsWith("-SNAPSHOT") || Number(process.env.USE_PREBUILT)) {
+  if (INSTALLER_VERSION.endsWith("-SNAPSHOT") || Number(process.env.USE_LOCAL_PREBUILT)) {
     const path = url.fileURLToPath(new URL("../installer-template.unitypackage", import.meta.url))
     template = await fs.readFile(path);
   } else {
