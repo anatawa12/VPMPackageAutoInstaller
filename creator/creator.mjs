@@ -14,6 +14,11 @@
  */
 
 /**
+ * FOR DEVELOPER
+ * If you changed this file, you may also need to update Creator.cs
+ */
+
+/**
  * @param template {Uint8Array}
  * @param json {Uint8Array}
  * @return {Uint8Array}

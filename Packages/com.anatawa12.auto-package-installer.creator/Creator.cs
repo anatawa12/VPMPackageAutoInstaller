@@ -68,6 +68,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             _packageJsonAsset = null;
         }
 
+#region get / infer manifest info
         private void LoadPackageInfos()
         {
             if (_packageJsonAsset == null)
@@ -312,6 +313,125 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 return null;
             }
         }
+#endregion get / infer manifest info
+
+    }
+
+    internal static class PackageCreator
+    {
+        private const string InstallerTemplateUnityPackageGuid = "f1f874df1c4e54463bdfd6d886007936";
+
+        #region javascript reimplementation
+        // this part is re-implementation of creator.mjs.
+        // When you edit this, you must check if I must also modify creator.mjs.
+
+        // ReSharper disable InconsistentNaming
+        private const int chunkLen = 512;
+        private const int nameOff = 0;
+        private const int nameLen = 100;
+        private const int sizeOff = 124;
+        private const int sizeLen = 12;
+        private const int checksumOff = 148;
+        private const int checksumLen = 8;
+        private const string configJsonPathInTar = "./9028b92d14f444e2b8c389be130d573f/asset";
+
+        static byte[] makeTarWithJson(byte[] template, byte[] json)
+        {
+            int cursor = 0;
+            while (cursor < template.Length) {
+                var size = readOctal(template, cursor + sizeOff, sizeLen);
+                var contentSize = (size + chunkLen - 1) & ~(chunkLen - 1);
+                var name = readString(template, cursor + nameOff, nameLen);
+                if (name == configJsonPathInTar) {
+                    // set new size and calc checksum
+                    saveOctal(template, cursor + sizeOff, sizeLen, json.Length, sizeLen - 1);
+                    Fill(template, (byte)' ', cursor + checksumOff, checksumLen);
+                    var checksum = calcCheckSum(template, cursor, chunkLen);
+                    saveOctal(template, cursor + checksumOff, checksumLen, checksum, checksumLen - 2);
+
+                    // calc pad size
+                    var padSize = json.Length % chunkLen == 0 ? 0 : (chunkLen - json.Length);
+
+                    // create tar file
+                    var result = new byte[cursor + chunkLen
+                                          + json.Length + padSize
+                                          + (template.Length - (cursor + chunkLen + contentSize))];
+                    Array.Copy(template, 0, result, 0, cursor + chunkLen);
+                    Array.Copy(json, 0, result, cursor + chunkLen, json.Length);
+                    // there's no need to set padding because already 0-filled
+                    Array.Copy(template, cursor + chunkLen + contentSize, 
+                        result, (cursor + chunkLen) + json.Length + padSize,
+                        template.Length - (cursor + chunkLen + contentSize));
+                    return result;
+                } else {
+                    cursor += chunkLen;
+                    cursor += contentSize;
+                }
+            }
+            throw new InvalidOperationException("config.json not found");
+        }
+
+        /**
+         * @param {Uint8Array} buf
+         * @return {number}
+         */
+        static int calcCheckSum(byte[] buf, int offset, int length) {
+            var sum = 0;
+            for (var i = 0; i < length; i++) {
+                sum = (sum + buf[offset + i]) & 0x1FFFF;
+            }
+            return sum;
+        }
+
+        static string readString(byte[] buf, int offset, int len) {
+            var firstNullByte = Array.IndexOf(buf, offset) - offset;
+            if (firstNullByte < 0)
+                return Encoding.UTF8.GetString(buf, offset, len);
+            return Encoding.UTF8.GetString(buf, offset, firstNullByte);
+        }
+        
+        static int readOctal(byte[] buf, int offset, int len)
+        {
+            var s = readString(buf, offset, len);
+            if (s == "") return 0;
+            return Convert.ToInt32(s, 8);
+        }
+        
+        /**
+         * @param {Uint8Array} buf
+         * @param {number} offset
+         * @param {number} len
+         * @param {number} value
+         * @param {number} octalLen
+         */
+        static void saveOctal(byte[] buf, int offset, int len, int value, int octalLen = 0) {
+            var str = Convert.ToString(value, 8).PadLeft(octalLen, '0');
+            var bytes = Encoding.UTF8.GetBytes(str);
+            if (bytes.Length >= len)
+                throw new IndexOutOfRangeException("space not enough");
+            
+            bytes.CopyTo(buf, offset);
+
+            if (bytes.Length < len) {
+                buf[offset + bytes.Length] = 0;
+                for (var i = offset + bytes.Length + 1; i < len; i++)
+                {
+                    buf[offset + i] = (byte)' ';
+                }
+            }
+        }
+        
+        private static void Fill(byte[] buffer, byte c, int offset, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                buffer[offset + i] = c;
+            }
+            throw new NotImplementedException();
+        }
+
+        // ReSharper restore InconsistentNaming
+        #endregion
     }
 
 #pragma warning disable CS0649
