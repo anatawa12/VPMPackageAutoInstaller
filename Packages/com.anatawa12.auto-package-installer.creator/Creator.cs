@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using Codice.Utils;
@@ -8,6 +9,7 @@ using JetBrains.Annotations;
 using Unity.Plastic.Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace Anatawa12.AutoPackageInstaller.Creator
 {
@@ -52,6 +54,11 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 {
                     EditorGUILayout.LabelField($"{package.Id}: {package.GitURL}");
                 }
+
+                if (GUILayout.Button("Create Installer"))
+                {
+                    CreateInstaller();
+                }
             }
             else
             {
@@ -59,6 +66,65 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 {
                     EditorGUILayout.LabelField("The file is not valid package.json");
                 }
+            }
+        }
+
+        private void CreateInstaller()
+        {
+            try
+            {
+
+                var remoteUrl = _gitRemoteURL ?? _inferredGitInfo.remote ?? "";
+                if (string.IsNullOrEmpty(remoteUrl))
+                {
+                    EditorUtility.DisplayDialog("ERROR", "Please set git remote url", "OK");
+                    return;
+                }
+
+                var remoteTag = _tagName ?? _inferredGitInfo.tag ?? "";
+                if (string.IsNullOrEmpty(remoteTag))
+                {
+                    if (!EditorUtility.DisplayDialog("WARNING", "version tag not specified. " +
+                                                                "this will make installer for LATEST version. " +
+                                                                "Are you sure?", "OK", "NO"))
+                        return;
+                }
+
+                if (!string.IsNullOrEmpty(remoteTag))
+                    remoteUrl = $"{remoteUrl}#{remoteTag}";
+
+                var path = EditorUtility.SaveFilePanel("Create Installer...",
+                    "",
+                    (_rootPackageJson.DisplayName ?? _rootPackageJson.Name) + "-installer.unitypackage",
+                    "unitypackage");
+                if (string.IsNullOrEmpty(path)) return;
+
+                var dependencies = new Dictionary<string, string>();
+                foreach (var package in _packages)
+                {
+                    dependencies[package.Id] = package.GitURL;
+                }
+
+                dependencies[_rootPackageJson.Name] = remoteUrl;
+                var configJsonObj = new CreatorConfigJson(dependencies);
+                var configJson = JsonConvert.SerializeObject(configJsonObj);
+
+                var created = PackageCreator.CreateUnityPackage(Encoding.UTF8.GetBytes(configJson));
+
+                File.WriteAllBytes(path, created);
+                EditorUtility.RevealInFinder(path);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("ERROR creating installer. " +
+                               "Please report me at https://github.com/anatawa12/AutoPackageInstaller/issues/new " +
+                               "with the next error message.");
+                Debug.LogError(e);
+                EditorUtility.DisplayDialog("ERROR",
+                    "Internal Error occurred.\n" +
+                    "If Possible, please report me at https://github.com/anatawa12/AutoPackageInstaller/issues/new " +
+                    "with error message on console.\n" +
+                    "(there also be the link to report on error console.)", "OK");
             }
         }
 
@@ -321,6 +387,38 @@ namespace Anatawa12.AutoPackageInstaller.Creator
     {
         private const string InstallerTemplateUnityPackageGuid = "f1f874df1c4e54463bdfd6d886007936";
 
+        public static byte[] CreateUnityPackage(byte[] configJson)
+        {
+            var template = FindTemplate();
+            var gzDecompressStream = new GZipStream(new MemoryStream(template, false), CompressionMode.Decompress);
+            var uncompressed = new byte[GetGZipDecompressedSize(template)];
+            for (int i = 0; i < uncompressed.Length; i++)
+            {
+                i += gzDecompressStream.Read(uncompressed, i, uncompressed.Length - i);
+            }
+            var tar = makeTarWithJson(uncompressed, configJson);
+            var outStream = new MemoryStream();
+            var gzCompressStream = new GZipStream(outStream, CompressionLevel.Optimal);
+            gzCompressStream.Write(tar, 0, tar.Length);
+            gzCompressStream.Dispose();
+            return outStream.ToArray();
+        }
+
+        private static int GetGZipDecompressedSize(byte[] template)
+        {
+            var lenField = template.Length - 4;
+            return template[lenField] 
+                   | template[lenField + 1] << 8 
+                   | template[lenField + 2] << 16
+                   | template[lenField + 3] << 24;
+        }
+
+        private static byte[] FindTemplate()
+        {
+            return AssetDatabase
+                .LoadAssetAtPath<TextAsset>(AssetDatabase.GUIDToAssetPath(InstallerTemplateUnityPackageGuid)).bytes;
+        }
+
         #region javascript reimplementation
         // this part is re-implementation of creator.mjs.
         // When you edit this, you must check if I must also modify creator.mjs.
@@ -384,7 +482,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         }
 
         static string readString(byte[] buf, int offset, int len) {
-            var firstNullByte = Array.IndexOf(buf, offset) - offset;
+            var firstNullByte = Array.IndexOf(buf, (byte) 0, offset) - offset;
             if (firstNullByte < 0)
                 return Encoding.UTF8.GetString(buf, offset, len);
             return Encoding.UTF8.GetString(buf, offset, firstNullByte);
@@ -427,7 +525,6 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             {
                 buffer[offset + i] = c;
             }
-            throw new NotImplementedException();
         }
 
         // ReSharper restore InconsistentNaming
@@ -439,6 +536,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
     internal class PackageJson
     {
         [JsonProperty("name")] public string Name;
+        [JsonProperty("displayName")] public string DisplayName;
         [JsonProperty("version")] public string Version;
         [JsonProperty("dependencies")] public Dictionary<string, string> Dependencies;
         [JsonProperty("gitDependencies")] public Dictionary<string, string> GitDependencies;
@@ -462,6 +560,18 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         {
             Id = id;
             GitURL = gitURL;
+        }
+    }
+    
+    internal class CreatorConfigJson
+    {
+        [JsonProperty("dependencies")]
+        // ReSharper disable once NotAccessedField.Global
+        public Dictionary<string, string> Dependencies;
+
+        public CreatorConfigJson(Dictionary<string, string> dependencies)
+        {
+            Dependencies = dependencies;
         }
     }
 }
