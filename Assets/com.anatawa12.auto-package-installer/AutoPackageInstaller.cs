@@ -121,7 +121,7 @@ namespace Anatawa12.AutoPackageInstaller
                 var index = versionOrGitUrl.IndexOf('#');
                 if (index == -1)
                     return "latest";
-                var name = versionOrGitUrl.Substring(index);
+                var name = versionOrGitUrl.Substring(index + 1);
                 if (name.StartsWith("v"))
                     name = name.Substring(1);
                 return name;
