@@ -74,4 +74,7 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
+/Packages/com.anatawa12.auto-package-installer.creator/installer-template.unitypackage.bytes
+/Packages/com.anatawa12.auto-package-installer.creator/installer-template.unitypackage.bytes.meta
+
 .idea
