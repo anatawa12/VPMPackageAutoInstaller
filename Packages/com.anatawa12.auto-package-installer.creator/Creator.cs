@@ -15,7 +15,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 {
     public class AutoPackageInstallerCreator : EditorWindow
     {
-        [MenuItem("anatawa12/AutoPackageInstallerCreator")]
+        [MenuItem("Window/AutoPackageInstallerCreator")]
         public static void OpenGui()
         {
             GetWindow<AutoPackageInstallerCreator>();
