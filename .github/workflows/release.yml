@@ -32,7 +32,7 @@ jobs:
 
           # git add to commit version name changes
           git add "$CREATOR_PKG_ROOT/package.json"
-          git add "creator/main.mjs"
+          git add "creator/creator.mjs"
 
           git commit -m "$VERSION"
           git tag "v$VERSION"
@@ -75,7 +75,7 @@ jobs:
           git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
           git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
           git add "$CREATOR_PKG_ROOT/package.json"
-          git add "creator/main.mjs"
+          git add "creator/creator.mjs"
           git commit -m "prepare for next version: $VERSION"
           git push && git push --tags
 

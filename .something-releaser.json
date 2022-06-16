@@ -6,7 +6,7 @@
     },
     {
       "changer": "regex-pattern",
-      "path": "creator/main.mjs",
+      "path": "creator/creator.mjs",
       "info": "let INSTALLER_VERSION = \"$1\";"
     }
   ]
