@@ -25,9 +25,10 @@ jobs:
             Assets/com.anatawa12.auto-package-installer
 
           # add to creator unity package
-          cp installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage"
-          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage"
-          cp "building/installer-template.unitypackage.meta" "$CREATOR_PKG_ROOT/"
+          cp installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
+          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
+          cp "building/installer-template.unitypackage.bytes.meta" "$CREATOR_PKG_ROOT/"
+          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
 
           # git add to commit version name changes
           git add "$CREATOR_PKG_ROOT/package.json"
@@ -71,8 +72,8 @@ jobs:
           VERSION="$(version-next "$VERSION")"
           set-version "$(version-snapshot "$VERSION")"
           CREATOR_PKG_ROOT="Packages/com.anatawa12.auto-package-installer.creator"
-          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage"
-          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.meta"
+          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
+          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
           git add "$CREATOR_PKG_ROOT/package.json"
           git add "creator/main.mjs"
           git commit -m "prepare for next version: $VERSION"
