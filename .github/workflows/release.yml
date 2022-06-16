@@ -63,7 +63,8 @@ jobs:
 
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
           cp installer-template.unitypackage "$tmp/"
-          cp building/index.html "$tmp/"
+          cp creator/index.html "$tmp/"
+          cp creator/creator.mjs "$tmp/"
           gh-set-output "tmp" "$tmp"
 
       - name: prepare next release & push
