@@ -21,6 +21,19 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             GetWindow<AutoPackageInstallerCreator>();
         }
 
+        private Action _onProjectChange;
+
+        private void OnEnable()
+        {
+            EditorApplication.projectChanged += _onProjectChange = OnProjectChange;
+        }
+
+        private void OnDisable()
+        {
+            EditorApplication.projectChanged -= _onProjectChange;
+        }
+
+        private bool _shouldReload;
         private TextAsset _packageJsonAsset;
         private PackageJson _rootPackageJson;
         private ManifestJson _manifestJson;
@@ -36,8 +49,9 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             var old = _packageJsonAsset;
             _packageJsonAsset =
                 (TextAsset)EditorGUILayout.ObjectField("package.json", _packageJsonAsset, typeof(TextAsset), false);
-            if (_packageJsonAsset != old)
+            if (_packageJsonAsset != old || _shouldReload)
                 LoadPackageInfos();
+            _shouldReload = false;
 
             if (_packages != null)
             {
@@ -130,8 +144,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 
         private void OnProjectChange()
         {
-            _manifestJson = null;
-            _packageJsonAsset = null;
+            _shouldReload = true;
         }
 
 #region get / infer manifest info
