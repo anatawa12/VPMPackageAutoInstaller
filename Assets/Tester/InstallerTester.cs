@@ -5,7 +5,7 @@ namespace Anatawa12.AutoPackageInstaller
 {
     public class InstallerTester : EditorWindow
     {
-        [MenuItem("anatawa12/InstallerTester")]
+        [MenuItem("Window/InstallerTester")]
         public static void Open()
         {
             GetWindow<InstallerTester>();
