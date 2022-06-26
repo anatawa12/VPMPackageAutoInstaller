@@ -92,9 +92,55 @@ namespace Anatawa12.AutoPackageInstaller
                 select (key, value))
                 .ToList();
 
-            if (!EditorUtility.DisplayDialog("Confirm", "You're installing the following packages:\n"
-                     + string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}")), 
-                    "Install", "Cancel"))
+
+            var removePaths = new List<string>();
+            var legacyFolders = config.Get("legacyFolders", JsonType.Obj);
+            foreach (var key in legacyFolders.Keys)
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
+                if (asset != null)
+                {
+                    removePaths.Add(AssetDatabase.GetAssetPath(asset));
+                }
+                else
+                {
+                    var guid = legacyFolders.Get(key, JsonType.String);
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!string.IsNullOrEmpty(path))
+                        removePaths.Add(path);
+                }
+            }
+
+            /*
+            // TODO: Research about legacyFiles and uncomment this
+            var legacyFiles = config.Get("legacyFiles", JsonType.Obj);
+            foreach (var key in legacyFiles.Keys)
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
+                if (asset != null)
+                {
+                    removePaths.Add(AssetDatabase.GetAssetPath(asset));
+                }
+                else
+                {
+                    var guid = legacyFiles.Get(key, JsonType.String);
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!string.IsNullOrEmpty(path))
+                        removePaths.Add(path);
+                }
+            }
+            */
+
+            var confirmMessage = "You're installing the following packages:\n";
+            confirmMessage += string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}"));
+
+            if (removePaths.Count != 0)
+            {
+                confirmMessage += "\n\nYou're also deleting the following files/folders";
+                confirmMessage += string.Join("\n", removePaths);
+            }
+
+            if (!EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
                 return;
 
             foreach (var (key, value) in updates)
@@ -111,6 +157,20 @@ namespace Anatawa12.AutoPackageInstaller
 
             File.WriteAllText(ManifestPath, JsonWriter.Write(manifest));
             SetDirty(ManifestPath);
+
+            try
+            {
+                foreach (var removePath in removePaths) 
+                    if (File.Exists(removePath))
+                        File.Delete(removePath);
+                    else
+                        Directory.Delete(removePath, true);
+                        
+            }
+            catch (IOException e)
+            {
+                Debug.LogError($"error during deleting legacy: {e}");
+            }
         }
 
         private static string GetVersionName(string versionOrGitUrl)
