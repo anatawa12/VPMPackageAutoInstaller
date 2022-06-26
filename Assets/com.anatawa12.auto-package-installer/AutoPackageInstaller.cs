@@ -82,16 +82,15 @@ namespace Anatawa12.AutoPackageInstaller
             var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
             var manifest = new JsonParser(File.ReadAllText(ManifestPath, Encoding.UTF8)).Parse(JsonType.Obj);
 
-            var updates = new List<(string key, string value)>();
             var dependencies = config.Get("dependencies", JsonType.Obj);
             var manifestDependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
-            foreach (var key in dependencies.Keys)
-            {
-                var value = dependencies.Get(key, JsonType.String);
-                var version = manifestDependencies.Get(key, JsonType.String, true);
-                if (version == null || ShouldUpdatePackage(version, value))
-                    updates.Add((key, value));
-            }
+            var updates = (
+                from key in dependencies.Keys
+                let value = dependencies.Get(key, JsonType.String)
+                let version = manifestDependencies.Get(key, JsonType.String, true)
+                where version == null || ShouldUpdatePackage(version, value)
+                select (key, value))
+                .ToList();
 
             if (!EditorUtility.DisplayDialog("Confirm", "You're installing the following packages:\n"
                      + string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}")), 
