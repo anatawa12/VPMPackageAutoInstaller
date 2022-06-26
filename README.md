@@ -5,7 +5,40 @@ An experimental project to install unity package published via non-official regi
 
 ## How to use
 
-Easier way will be provided on web but not yet.
+### Editor Plugin
+
+1. download latest version of installer creator [here][download-creator-latest]
+2. Import the unitypackage to the unity project contains ``package.json``
+3. Open `AutoPackageInstallerCreator` from Window menu
+4. Select package.json
+5. If not correct, please set git url & git tag.
+6. Click `Create Installer`
+
+[download-creator-latest]: https://github.com/anatawa12/AutoPackageInstaller/releases/latest/download/installer-creator.unitypackage
+
+### Other ways
+
+<details>
+<summary>click to open other ways</summary>
+
+#### CLI Tool
+
+1. Download latest version of installer creator [here][download-creator-js-latest].
+2. Create config.json
+3. Run `node path/to/creator.mjs path/to/config.json path/to/output.unitypackage` or
+    `deno run --allow-net --allow-read --allow-write path/to/creator.mjs path/to/config.json path/to/output.unitypackage`
+
+#### Web tool
+
+1. Open website [here][creator-web]
+2. Write config.json
+3. Click `create installer`
+
+[creator-web]: https://anatawa12.github.io/AutoPackageInstaller/
+
+[download-creator-js-latest]: https://github.com/anatawa12/AutoPackageInstaller/releases/latest/download/creator.mjs
+
+#### Just create unitypackage
 
 1. Clone or [download][download-this] this project.
 2. Edit config.json at `Assets/com.anatawa12.auto-package-installer/config.json`
@@ -15,6 +48,8 @@ Easier way will be provided on web but not yet.
 6. un-check `Incliude dependencies` on `Exporting package` dialog.
 7. Click `Export...` and save `.unitypackage` to anywhere you want.
 8. Share `.unitypackage` with user who want to use your package.
+
+</details>
 
 [download-this]: https://github.com/anatawa12/AutoPackageInstaller/archive/refs/heads/master.zip
 
