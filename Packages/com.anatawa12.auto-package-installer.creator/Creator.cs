@@ -63,10 +63,13 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 if (tag != (_tagName ?? _inferredGitInfo.tag ?? ""))
                     _tagName = tag;
 
-                EditorGUILayout.LabelField("The following packages will also be installed");
-                foreach (var package in _packages)
+                if (_packages.Count != 0)
                 {
-                    EditorGUILayout.LabelField($"{package.Id}: {package.GitURL}");
+                    EditorGUILayout.LabelField("The following packages will also be installed");
+                    foreach (var package in _packages)
+                    {
+                        EditorGUILayout.LabelField($"{package.Id}: {package.GitURL}");
+                    }
                 }
 
                 if (GUILayout.Button("Create Installer"))
