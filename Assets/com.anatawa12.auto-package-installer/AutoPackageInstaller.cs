@@ -29,17 +29,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
-[assembly:InternalsVisibleTo("com.anatawa12.auto-package-installer.tester")]
+[assembly: InternalsVisibleTo("com.anatawa12.auto-package-installer.tester")]
 
 namespace Anatawa12.AutoPackageInstaller
 {
-
     [InitializeOnLoad]
     public class AutoPackageInstaller
     {
@@ -47,7 +47,7 @@ namespace Anatawa12.AutoPackageInstaller
         private const string ConfigGuid = "9028b92d14f444e2b8c389be130d573f";
         private const string ManifestPath = "Packages/manifest.json";
 
-        private static readonly string[] ToBeRemoved = 
+        private static readonly string[] ToBeRemoved =
         {
             ConfigGuid,
             // the C# file
@@ -66,6 +66,7 @@ namespace Anatawa12.AutoPackageInstaller
                 Debug.Log("Tester found. skipping auto install & remove self");
                 return;
             }
+
             DoInstall();
             RemoveSelf();
         }
@@ -89,11 +90,11 @@ namespace Anatawa12.AutoPackageInstaller
             var dependencies = config.Get("dependencies", JsonType.Obj);
             var manifestDependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
             var updates = (
-                from key in dependencies.Keys
-                let value = dependencies.Get(key, JsonType.String)
-                let version = manifestDependencies.Get(key, JsonType.String, true)
-                where version == null || ShouldUpdatePackage(version, value)
-                select (key, value))
+                    from key in dependencies.Keys
+                    let value = dependencies.Get(key, JsonType.String)
+                    let version = manifestDependencies.Get(key, JsonType.String, true)
+                    where version == null || ShouldUpdatePackage(version, value)
+                    select (key, value))
                 .ToList();
 
 
@@ -164,12 +165,11 @@ namespace Anatawa12.AutoPackageInstaller
 
             try
             {
-                foreach (var removePath in removePaths) 
+                foreach (var removePath in removePaths)
                     if (File.Exists(removePath))
                         File.Delete(removePath);
                     else
                         Directory.Delete(removePath, true);
-                        
             }
             catch (IOException e)
             {
@@ -195,68 +195,9 @@ namespace Anatawa12.AutoPackageInstaller
 
         private static bool ShouldUpdatePackage(string current, string value)
         {
-            try
-            {
-                Version currentVersion = new Version(GetVersionName(current));
-                Version valueVersion = new Version(GetVersionName(value));
+            if (Version.TryParse(current, out var currentVersion) && Version.TryParse(value, out var valueVersion))
                 return currentVersion.CompareTo(valueVersion) < 0;
-            }
-            catch (Exception e)
-            {
-                // non-semver
-                return true;
-            }
-        }
-
-        private readonly struct Version : IComparable<Version>
-        {
-            public readonly int Maj;
-            public readonly int Min;
-            public readonly int Pat;
-            public readonly string Pre;
-            public readonly string Build;
-
-            public Version(string version)
-            {
-                Maj = 0;
-                Min = 0;
-                Pat = 0;
-                Pre = null;
-                Build = null;
-
-                var split = version.Split(new[] { '+' }, 2);
-                if (split.Length == 2) (version, Build) = (split[0], split[1]);
-                split = version.Split(new[] { '-' }, 2);
-                if (split.Length == 2) (version, Pre) = (split[0], split[1]);
-                split = version.Split(new[] { '.' }, 3);
-
-                switch (split.Length)
-                {
-                    default:
-                        Pat = int.Parse(split[2]);
-                        goto case 2;
-                    case 2:
-                        Min = int.Parse(split[1]);
-                        goto case 1;
-                    case 1:
-                        Maj = int.Parse(split[0]);
-                        break;
-                }
-            }
-
-
-            public int CompareTo(Version other)
-            {
-                var majComparison = Maj.CompareTo(other.Maj);
-                if (majComparison != 0) return majComparison;
-                var minComparison = Min.CompareTo(other.Min);
-                if (minComparison != 0) return minComparison;
-                var patComparison = Pat.CompareTo(other.Pat);
-                if (patComparison != 0) return patComparison;
-                var preComparison = string.Compare(Pre, other.Pre, StringComparison.Ordinal);
-                if (preComparison != 0) return preComparison;
-                return string.Compare(Build, other.Build, StringComparison.Ordinal);
-            }
+            return true;
         }
 
         public static void RemoveSelf()
@@ -265,6 +206,7 @@ namespace Anatawa12.AutoPackageInstaller
             {
                 RemoveFileAsset(remove);
             }
+
             AssetDatabase.Refresh();
         }
 
@@ -307,6 +249,7 @@ namespace Anatawa12.AutoPackageInstaller
     }
 
     // Mini VPM Simulator
+
     #region VPM
 
     internal class VRChatPackageManager
@@ -314,8 +257,11 @@ namespace Anatawa12.AutoPackageInstaller
         public static string GlobalFoler = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VRChatCreatorCompanion");
+
         public static string GlobalSettingFile = Path.Combine(GlobalFoler, "settings.json");
         public static string GlobalReposFolder = Path.Combine(GlobalFoler, "Repos");
+        public static string ProjectFolder = Directory.GetCurrentDirectory();
+        public static string VpmManifest = Path.Combine(ProjectFolder, "Packages", "vpm-manifest.json");
 
         public enum AddPackageRepositoryResult
         {
@@ -376,15 +322,255 @@ namespace Anatawa12.AutoPackageInstaller
 
             return AddPackageRepositoryResult.Success;
         }
+
+        public enum AddPackageResult
+        {
+            Updated,
+            AlreadyExists
+        }
+
+        // add to dependencies & lock and run resolver to add package
+        public static AddPackageResult AddPackage(string package, string version, bool overrideNewer = false,
+            bool callResolver = true)
+        {
+            var requestedIsSemver = Version.TryParse(version, out var requestedParsed);
+            JsonObj manifest;
+            // read setting
+            try
+            {
+                manifest = new JsonParser(File.ReadAllText(VpmManifest, Encoding.UTF8)).Parse(JsonType.Obj);
+            }
+            catch (FileNotFoundException)
+            {
+                manifest = new JsonObj();
+            }
+
+            var dependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
+            var locked = manifest.GetOrPut("locked", () => new JsonObj(), JsonType.Obj);
+
+            var foundInDependencies = dependencies.GetOrPut(package, () => new JsonObj(), JsonType.Obj);
+            var foundVersion = foundInDependencies.Get("version", JsonType.String, true);
+            // if version in dependencies is newer, do not update
+            if (!overrideNewer && requestedIsSemver && foundVersion != null
+                && Version.TryParse(foundVersion, out var foundParsed) && foundParsed >= requestedParsed)
+                return AddPackageResult.AlreadyExists;
+
+            foundInDependencies.Put("version", version, JsonType.String);
+
+
+            // add or update lock
+            var lockedComponent = locked.GetOrPut(package, () => new JsonObj(), JsonType.Obj);
+            var lockedVersion = lockedComponent.Get("version", JsonType.String, true);
+
+            // if version in lock is newer, do not update
+            if (!overrideNewer && requestedIsSemver && lockedVersion != null
+                && Version.TryParse(lockedVersion, out var lockedParsed) && lockedParsed >= requestedParsed)
+                return AddPackageResult.AlreadyExists;
+
+            lockedComponent.Put("version", version, JsonType.String);
+
+            // save manifest
+            File.WriteAllText(VpmManifest, JsonWriter.Write(manifest), Encoding.UTF8);
+
+            if (callResolver)
+                CallResolver();
+            return AddPackageResult.Updated;
+        }
+
+        public static void CallResolver()
+        {
+            try
+            {
+                // first, call VPMProjectManifest.Resolve
+                {
+                    var asm = Assembly.Load("vpm-core-lib");
+                    var type = asm.GetType("VRC.PackageManagement.Core.Types.Packages.VPMProjectManifest");
+                    var method = type.GetMethod("Resolve", BindingFlags.Public | BindingFlags.Static, null,
+                        new[] { typeof(string) }, null);
+                    method.Invoke(null, new object[] { ProjectFolder });
+                }
+                // first, call UnityEditor.PackageManager.Client.Resolve
+                {
+                    var method = typeof(UnityEditor.PackageManager.Client)
+                        .GetMethod("Resolve", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                    if (method != null)
+                        method.Invoke(null, null);
+                    AssetDatabase.Refresh();
+                }
+                return;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Invoking VPMProjectManifest.Resolve failed. ");
+                Debug.LogError(e);
+            }
+
+            SessionState.SetBool("PROJECT_LOADED", false);
+        }
+    }
+
+    internal readonly struct Version : IComparable<Version>
+    {
+        public readonly int Major;
+        public readonly int Minor;
+        public readonly int Patch;
+        public readonly string[] Prerelease;
+        public readonly string Build;
+
+        public Version(int major, int minor, int patch, params string[] prerelease)
+        {
+            Major = major;
+            Minor = minor;
+            Patch = patch;
+            Prerelease = prerelease?.Length == 0 ? null : prerelease;
+            Build = null;
+        }
+
+        public Version(int major, int minor, int patch, string[] prerelease, string build)
+        {
+            Major = major;
+            Minor = minor;
+            Patch = patch;
+            Prerelease = prerelease?.Length == 0 ? null : prerelease;
+            Build = build?.Length == 0 ? null : build;
+        }
+
+        public override string ToString()
+        {
+            var hasPrerelease = Prerelease != null;
+            var hasBuild = Build != null;
+            if (!hasPrerelease)
+            {
+                return !hasBuild
+                    ? $"{Major}.{Minor}.{Patch}"
+                    : $"{Major}.{Minor}.{Patch}+{Build}";
+            }
+            else
+            {
+                return !hasBuild
+                    ? $"{Major}.{Minor}.{Patch}-{string.Join(".", Prerelease)}"
+                    : $"{Major}.{Minor}.{Patch}-{string.Join(".", Prerelease)}+{Build}";
+            }
+        }
+
+        public int CompareTo(Version other)
+        {
+            var majorComparison = Major.CompareTo(other.Major);
+            if (majorComparison != 0) return majorComparison;
+            var minorComparison = Minor.CompareTo(other.Minor);
+            if (minorComparison != 0) return minorComparison;
+            var patchComparison = Patch.CompareTo(other.Patch);
+            if (patchComparison != 0) return patchComparison;
+            // both are release: same version
+            if (Prerelease == null && other.Prerelease == null) return 0;
+            // this is release but other is prerelease: this is later
+            if (Prerelease == null && other.Prerelease != null) return 1;
+            // this is release but other is prerelease: other is later
+            if (Prerelease != null && other.Prerelease == null) return -1;
+            System.Diagnostics.Debug.Assert(Prerelease != null && other.Prerelease != null);
+
+            // both are prerelease
+            var minLen = Math.Min(Prerelease.Length, other.Prerelease.Length);
+            for (var i = 0; i < minLen; i++)
+            {
+                var thisComponent = Prerelease[i];
+                var thisIsInt = int.TryParse(thisComponent, out var thisInt);
+                var otherComponent = other.Prerelease[i];
+                var otherIsInt = int.TryParse(otherComponent, out var otherInt);
+                if (thisIsInt && otherIsInt)
+                {
+                    var intComparison = thisInt.CompareTo(otherInt);
+                    if (intComparison != 0) return intComparison;
+                }
+                else if (!thisIsInt && !otherIsInt)
+                {
+                    var strComparison = String.Compare(thisComponent, otherComponent, StringComparison.Ordinal);
+                    if (strComparison != 0) return strComparison;
+                }
+                else if (thisIsInt && !otherIsInt)
+                {
+                    return -1;
+                }
+                else if (!thisIsInt && otherIsInt)
+                {
+                    return 1;
+                }
+            }
+
+            return Prerelease.Length.CompareTo(other.Prerelease.Length);
+        }
+
+        public static bool TryParse(string str, out Version version)
+        {
+            version = default;
+            string[] prerelease = null;
+            string build = null;
+            int major = 0, minor = 0, patch = 0;
+
+            var plus = str.IndexOf('+');
+            if (plus != -1)
+            {
+                build = str.Substring(plus + 1);
+                str = str.Substring(0, plus);
+            }
+
+            var hyphen = str.IndexOf('-');
+            if (hyphen != -1)
+            {
+                prerelease = str.Substring(hyphen + 1).Split('.');
+                if (prerelease.Any(x => x.Length == 0)) return false;
+                str = str.Substring(0, hyphen);
+            }
+
+            var versionCore = str.Split('.');
+            if (versionCore.Length > 3) return false;
+            if (1 <= versionCore.Length && !int.TryParse(versionCore[0], out major)) return false;
+            if (2 <= versionCore.Length && !int.TryParse(versionCore[1], out minor)) return false;
+            if (3 <= versionCore.Length && !int.TryParse(versionCore[2], out patch)) return false;
+            version = new Version(major, minor, patch, prerelease, build);
+            return true;
+        }
+
+        public static bool operator ==(Version a, Version b) => a.Equals(b);
+        public static bool operator !=(Version a, Version b) => !a.Equals(b);
+        public static bool operator <(Version a, Version b) => a.CompareTo(b) < 0;
+        public static bool operator <=(Version a, Version b) => a.CompareTo(b) <= 0;
+        public static bool operator >(Version a, Version b) => a.CompareTo(b) > 0;
+        public static bool operator >=(Version a, Version b) => a.CompareTo(b) >= 0;
+
+        public bool Equals(Version other)
+        {
+            return Major == other.Major && Minor == other.Minor && Patch == other.Patch &&
+                   Equals(Prerelease, other.Prerelease) && Equals(Build, other.Build);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Version other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = Major;
+                hashCode = (hashCode * 397) ^ Minor;
+                hashCode = (hashCode * 397) ^ Patch;
+                hashCode = (hashCode * 397) ^ (Prerelease != null ? Prerelease.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (Build != null ? Build.GetHashCode() : 0);
+                return hashCode;
+            }
+        }
     }
 
     #endregion
 
     // minimum json parser with JsonObj, List<object>, string, long, double, bool, and null
     // This doesn't use Dictionary because it can't save order
+
     #region Json
 
-    class JsonObj
+    class JsonObj : IEnumerable<(string, object)>
     {
         [NotNull] internal readonly List<(string, object)> Obj = new List<(string, object)>();
 
@@ -398,6 +584,16 @@ namespace Anatawa12.AutoPackageInstaller
         public void Add(string key, object value)
         {
             Obj.Add((key, value));
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        IEnumerator<(string, object)> IEnumerable<(string, object)>.GetEnumerator()
+        {
+            return GetEnumerator();
         }
 
         public List<(string, object)>.Enumerator GetEnumerator()
@@ -455,7 +651,7 @@ namespace Anatawa12.AutoPackageInstaller
         {
             if (new object() is T) return (T)value;
             return value == null && optional ? default
-                : value is T t ? t 
+                : value is T t ? t
                 : throw new InvalidOperationException($"unexpected type: {value?.GetType()?.ToString() ?? "null"}");
         }
     }
@@ -465,9 +661,11 @@ namespace Anatawa12.AutoPackageInstaller
         enum TokenType : sbyte
         {
             None,
+
             // {}
             OpenBrace,
             CloseBrace,
+
             // []
             OpenBracket,
             CloseBracket,
@@ -514,14 +712,14 @@ namespace Anatawa12.AutoPackageInstaller
                     }
 
                     return list;
-                
+
                 case TokenType.OpenBrace:
                     JsonObj dict = new JsonObj();
-                    if ((token = NextToken()).Item1 != TokenType.OpenBrace)
+                    if ((token = NextToken()).Item1 != TokenType.CloseBrace)
                     {
                         if (token.Item1 != TokenType.Literal || !(token.Item2 is string key0))
                             throw new InvalidOperationException($"invalid json: unexpected token: {token.Item1}");
-                        
+
                         if ((token = NextToken()).Item1 != TokenType.Colon)
                             throw new InvalidOperationException($"invalid json: unexpected token: {token.Item1}");
 
@@ -531,10 +729,10 @@ namespace Anatawa12.AutoPackageInstaller
                         {
                             if (token.Item1 != TokenType.Comma)
                                 throw new InvalidOperationException($"invalid json: unexpected token: {token.Item1}");
-                            
+
                             if ((token = NextToken()).Item1 != TokenType.Literal || !(token.Item2 is string key))
                                 throw new InvalidOperationException($"invalid json: unexpected token: {token.Item1}");
-                            
+
                             if ((token = NextToken()).Item1 != TokenType.Colon)
                                 throw new InvalidOperationException($"invalid json: unexpected token: {token.Item1}");
 
@@ -700,6 +898,7 @@ namespace Anatawa12.AutoPackageInstaller
             while (char.IsWhiteSpace(c = GetMoveChar()))
             {
             }
+
             if (c != '\0')
                 throw new InvalidOperationException(InvalidChar(c));
         }
@@ -793,6 +992,7 @@ namespace Anatawa12.AutoPackageInstaller
                 else if (c < '\u0020') builder.Append($"'\\u{(int)c:x4}'");
                 else builder.Append(c);
             }
+
             builder.Append('"');
         }
 
@@ -825,7 +1025,7 @@ namespace Anatawa12.AutoPackageInstaller
                     if (!hasNext) break;
                 }
             }
-            
+
             builder.Append(oldIndent).Append('}');
         }
 
@@ -856,9 +1056,10 @@ namespace Anatawa12.AutoPackageInstaller
                     if (!hasNext) break;
                 }
             }
-            
+
             builder.Append(oldIndent).Append(']');
         }
     }
+
     #endregion
 }
