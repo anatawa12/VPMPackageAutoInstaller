@@ -570,7 +570,7 @@ namespace Anatawa12.AutoPackageInstaller
 
     #region Json
 
-    class JsonObj : IEnumerable<(string, object)>
+    sealed class JsonObj : IEnumerable<(string, object)>
     {
         [NotNull] internal readonly List<(string, object)> Obj = new List<(string, object)>();
 
@@ -630,6 +630,12 @@ namespace Anatawa12.AutoPackageInstaller
 
             Add(key, value);
         }
+
+        private bool Equals(JsonObj other) => Obj.Equals(other.Obj);
+
+        public override bool Equals(object obj) => ReferenceEquals(this, obj) || obj is JsonObj other && Equals(other);
+
+        public override int GetHashCode() => Obj.GetHashCode();
     }
 
     static class JsonType
@@ -656,7 +662,7 @@ namespace Anatawa12.AutoPackageInstaller
         }
     }
 
-    class JsonParser
+    sealed class JsonParser
     {
         enum TokenType : sbyte
         {
@@ -796,9 +802,9 @@ namespace Anatawa12.AutoPackageInstaller
                 case '"': return (TokenType.Literal, StringLiteral());
 
                 // numeric literal
-                case '-': return (TokenType.Literal, NumericLiteral(c));
-                case '+': return (TokenType.Literal, NumericLiteral(c));
-                case '0': return (TokenType.Literal, 0.0);
+                case '-':
+                case '+':
+                case '0':
                 case '1':
                 case '2':
                 case '3':
@@ -905,11 +911,14 @@ namespace Anatawa12.AutoPackageInstaller
 
         private object NumericLiteral(char c)
         {
+            var start = _cursor - 1;
             if (c == '+' || c == '-')
                 c = GetMoveChar();
 
-            var start = _cursor - 1;
-            c = SkipIntegerLiteral(c);
+            if (c == '0')
+                c = GetMoveChar();
+            else
+                c = SkipIntegerLiteral(c);
 
             if (c == '.')
             {
@@ -953,10 +962,8 @@ namespace Anatawa12.AutoPackageInstaller
 
         private char GetMoveChar()
         {
-            var cur = _cursor;
-            if (cur >= _input.Length) return '\0';
-            _cursor = cur + 1;
-            return _input[cur];
+            var cur = _cursor++;
+            return cur >= _input.Length ? '\0' : _input[cur];
         }
     }
 
@@ -966,7 +973,6 @@ namespace Anatawa12.AutoPackageInstaller
         {
             StringBuilder builder = new StringBuilder();
             WriteToBuilder(obj, builder, "");
-            builder.Append(Environment.NewLine);
             return builder.ToString();
         }
 
