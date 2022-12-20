@@ -25,6 +25,7 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -411,46 +412,59 @@ namespace Anatawa12.AutoPackageInstaller
 
     internal readonly struct Version : IComparable<Version>
     {
-        public readonly int Major;
-        public readonly int Minor;
-        public readonly int Patch;
-        public readonly string[] Prerelease;
-        public readonly string Build;
+        public int Major { get; }
+        private readonly int _minor;
+        public int Minor => _minor == -1 ? 0 : _minor;
+        public bool HasMinor => _minor != -1;
+        private readonly int _patch;
+        public int Patch => _patch == -1 ? 0 : _patch;
+        public bool HasPatch => _patch != -1;
+        public string[] Prerelease { get; }
+        public string Build { get; }
 
         public Version(int major, int minor, int patch, params string[] prerelease)
+            : this(major, minor, patch, prerelease, null)
         {
-            Major = major;
-            Minor = minor;
-            Patch = patch;
-            Prerelease = prerelease?.Length == 0 ? null : prerelease;
-            Build = null;
         }
 
         public Version(int major, int minor, int patch, string[] prerelease, string build)
         {
+            if (major < 0) throw new ArgumentException("must be zero or positive", nameof(major));
+            if (minor == -1 && patch != -1)
+                throw new ArgumentException("minor version must be defined if patch is defined", nameof(patch));
+            if (minor != -1 && minor < 0) throw new ArgumentException("must be zero or positive", nameof(major));
+            if (patch != -1 && patch < 0) throw new ArgumentException("must be zero or positive", nameof(major));
             Major = major;
-            Minor = minor;
-            Patch = patch;
+            _minor = minor;
+            _patch = patch;
             Prerelease = prerelease?.Length == 0 ? null : prerelease;
             Build = build?.Length == 0 ? null : build;
         }
 
         public override string ToString()
         {
-            var hasPrerelease = Prerelease != null;
-            var hasBuild = Build != null;
-            if (!hasPrerelease)
+            StringBuilder builder = new StringBuilder();
+            builder.Append(Major);
+            if (HasMinor)
             {
-                return !hasBuild
-                    ? $"{Major}.{Minor}.{Patch}"
-                    : $"{Major}.{Minor}.{Patch}+{Build}";
+                builder.Append('.').Append(Minor);
+                if (HasPatch)
+                {
+                    builder.Append('.').Append(Patch);
+                }
             }
-            else
+
+            if (Prerelease != null)
             {
-                return !hasBuild
-                    ? $"{Major}.{Minor}.{Patch}-{string.Join(".", Prerelease)}"
-                    : $"{Major}.{Minor}.{Patch}-{string.Join(".", Prerelease)}+{Build}";
+                builder.Append('-').Append(Prerelease[0]);
+                for (var i = 1; i < Prerelease.Length; i++)
+                    builder.Append('.').Append(Prerelease[i]);
             }
+
+            if (Build != null)
+                builder.Append('+').Append(Build);
+
+            return builder.ToString();
         }
 
         public int CompareTo(Version other)
@@ -505,7 +519,7 @@ namespace Anatawa12.AutoPackageInstaller
             version = default;
             string[] prerelease = null;
             string build = null;
-            int major = 0, minor = 0, patch = 0;
+            int major = -1, minor = -1, patch = -1;
 
             var plus = str.IndexOf('+');
             if (plus != -1)
@@ -540,8 +554,9 @@ namespace Anatawa12.AutoPackageInstaller
 
         public bool Equals(Version other)
         {
-            return Major == other.Major && Minor == other.Minor && Patch == other.Patch &&
-                   Equals(Prerelease, other.Prerelease) && Equals(Build, other.Build);
+            return Major == other.Major && _minor == other._minor && _patch == other._patch &&
+                   StructuralComparisons.StructuralEqualityComparer.Equals(Prerelease, other.Prerelease) 
+                   && Build == other.Build;
         }
 
         public override bool Equals(object obj)
@@ -554,9 +569,11 @@ namespace Anatawa12.AutoPackageInstaller
             unchecked
             {
                 var hashCode = Major;
-                hashCode = (hashCode * 397) ^ Minor;
-                hashCode = (hashCode * 397) ^ Patch;
-                hashCode = (hashCode * 397) ^ (Prerelease != null ? Prerelease.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ _minor;
+                hashCode = (hashCode * 397) ^ _patch;
+                hashCode = (hashCode * 397) ^ (Prerelease != null
+                    ? StructuralComparisons.StructuralEqualityComparer.GetHashCode(Prerelease)
+                    : 0);
                 hashCode = (hashCode * 397) ^ (Build != null ? Build.GetHashCode() : 0);
                 return hashCode;
             }
