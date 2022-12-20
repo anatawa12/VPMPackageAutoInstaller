@@ -1,12 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
-using Codice.Utils;
 using JetBrains.Annotations;
-using Unity.Plastic.Newtonsoft.Json;
+using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
@@ -189,8 +189,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                     var inRepoPath = packageDir.Substring(directoryName.Length + 1);
                     if (!string.IsNullOrEmpty(inRepoPath))
                     {
-                        newInferred.remote += "?path=" + HttpUtility.UrlEncode(
-                            inRepoPath.Replace('\\', '/')).Replace("%2f", "/");
+                        newInferred.remote += "?path=" + UrlEncode(inRepoPath.Replace('\\', '/'));
                     }
 
                     if (newInferred.remote != null && _inferredGitInfo.remote == _gitRemoteURL ||
@@ -207,6 +206,43 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             }
 
             _inferredGitInfo = (null, null);
+        }
+
+        private static class UrlNonEncodedCharTable
+        {
+            public static BitArray bits = new BitArray(128);
+
+            static UrlNonEncodedCharTable()
+            {
+                // most codepoints between ' ' and '~' are non-encoded
+                for (int i = ' '; i <= '~'; i++)
+                    bits[i] = true;
+                // query percent-encode set
+                bits[' '] = false;
+                bits['"'] = false;
+                bits['#'] = false;
+                bits['<'] = false;
+                bits['>'] = false;
+                bits['?'] = false;
+                bits['`'] = false;
+                bits['{'] = false;
+                bits['}'] = false;
+            }
+        }
+
+        private static string UrlEncode(string text)
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            var builder = new StringBuilder(bytes.Length);
+            foreach (var b in bytes)
+            {
+                if (b < 128 && UrlNonEncodedCharTable.bits[b])
+                    builder.Append((char)b);
+                else
+                    builder.Append('%').Append($"{b:x2}");
+            }
+
+            return builder.ToString();
         }
 
         private (string remote, string tag) TryParseGitRepo(string gitDir, string currentVersion)
