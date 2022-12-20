@@ -341,7 +341,7 @@ namespace Anatawa12.AutoPackageInstaller
             return value;
         }
 
-        public void Put<T>(string key, object value, TypeDesc<T> typeDesc)
+        public void Put<T>(string key, T value, TypeDesc<T> typeDesc)
         {
             for (int i = 0; i < Obj.Count; i++)
             {
@@ -522,7 +522,7 @@ namespace Anatawa12.AutoPackageInstaller
                 // numeric literal
                 case '-': return (TokenType.Literal, NumericLiteral(c));
                 case '+': return (TokenType.Literal, NumericLiteral(c));
-                case '0': return (TokenType.Literal, 0);
+                case '0': return (TokenType.Literal, 0.0);
                 case '1':
                 case '2':
                 case '3':
@@ -647,7 +647,7 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             _cursor--;
-            var str = _input.Substring(start, _cursor);
+            var str = _input.Substring(start, _cursor - start);
 
             //if (long.TryParse(str, out var l)) return l;
             if (double.TryParse(str, out var d)) return d;
@@ -699,7 +699,7 @@ namespace Anatawa12.AutoPackageInstaller
             else if (o is string s) WriteString(builder, s);
             //else if (o is long l) builder.Append(l);
             else if (o is double d) builder.Append(d);
-            else if (o is bool b) builder.Append(b);
+            else if (o is bool b) builder.Append(b ? "true" : "false");
             else if (o is JsonObj dict) WriteObject(builder, dict, indent);
             else if (o is List<object> list) WriteArray(builder, list, indent);
             else throw new ArgumentException($"unsupported type: {o.GetType()}", nameof(o));
