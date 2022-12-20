@@ -28,10 +28,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
+
+[assembly:InternalsVisibleTo("com.anatawa12.auto-package-installer.tester")]
 
 namespace Anatawa12.AutoPackageInstaller
 {
@@ -301,6 +305,80 @@ namespace Anatawa12.AutoPackageInstaller
             if (asset != null) EditorUtility.SetDirty(asset);
         }
     }
+
+    // Mini VPM Simulator
+    #region VPM
+
+    internal class VRChatPackageManager
+    {
+        public static string GlobalFoler = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "VRChatCreatorCompanion");
+        public static string GlobalSettingFile = Path.Combine(GlobalFoler, "settings.json");
+        public static string GlobalReposFolder = Path.Combine(GlobalFoler, "Repos");
+
+        public enum AddPackageRepositoryResult
+        {
+            Success,
+            AlreadyExists
+        }
+
+        public static AddPackageRepositoryResult AddPackageRepository(string url)
+        {
+            // read setting
+            var setting = new JsonParser(File.ReadAllText(GlobalSettingFile, Encoding.UTF8)).Parse(JsonType.Obj);
+            var userRepos = setting.Get("userRepos", JsonType.List);
+
+            // find existing
+            if (userRepos.Any(o => o is JsonObj userRepo && userRepo.Get("url", JsonType.String) == url))
+                return AddPackageRepositoryResult.AlreadyExists;
+
+            // get repo contents
+            var response = new HttpClient().GetAsync(url).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                throw new IOException($"Getting {url} failed");
+
+            var repoJsonString = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            var repoJson = new JsonParser(repoJsonString).Parse(JsonType.Obj);
+
+            // generate local repo path
+            var localRepoPath = Path.Combine(GlobalReposFolder, Guid.NewGuid() + ".json");
+            while (File.Exists(localRepoPath))
+                localRepoPath = Path.Combine(GlobalReposFolder, Guid.NewGuid() + ".json");
+
+            var repoName = repoJson.Get("name", JsonType.String);
+
+            // create local repo info
+            var localRepo = new JsonObj();
+            localRepo.Put("repo", repoJson, JsonType.Obj);
+
+            var creationInfo = new JsonObj();
+            creationInfo.Put("localPath", localRepoPath, JsonType.String);
+            creationInfo.Put("url", url, JsonType.String);
+            creationInfo.Put("name", repoName, JsonType.String);
+            localRepo.Put("CreationInfo", creationInfo, JsonType.Obj);
+
+            var description = new JsonObj();
+            description.Put("name", repoName, JsonType.String);
+            description.Put("type", "JsonRepo", JsonType.String);
+            localRepo.Put("Description", description, JsonType.Obj);
+
+            File.WriteAllText(localRepoPath, JsonWriter.Write(localRepo), Encoding.UTF8);
+
+            // update settings
+            var newRepo = new JsonObj();
+            newRepo.Put("localPath", localRepoPath, JsonType.String);
+            newRepo.Put("url", url, JsonType.String);
+            newRepo.Put("name", repoName, JsonType.String);
+            userRepos.Add(newRepo);
+
+            File.WriteAllText(GlobalSettingFile, JsonWriter.Write(setting), Encoding.UTF8);
+
+            return AddPackageRepositoryResult.Success;
+        }
+    }
+
+    #endregion
 
     // minimum json parser with JsonObj, List<object>, string, long, double, bool, and null
     // This doesn't use Dictionary because it can't save order
