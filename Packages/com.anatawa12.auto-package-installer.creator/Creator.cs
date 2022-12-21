@@ -37,6 +37,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         private TextAsset _packageJsonAsset;
         private PackageJson _rootPackageJson;
         private ManifestJson _manifestJson;
+        private List<PackageInfo> _packages;
         private HashSet<LegacyInfo> _legacyAssets;
 
         private void OnGUI()
@@ -119,27 +120,60 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         {
             if (_packageJsonAsset == null)
             {
+                _packages = null;
                 _legacyAssets = null;
                 return;
             }       
-            LoadPackageJson();
+            LoadPackageJsonRecursive();
             if (_legacyAssets == null) return;
         }
 
-        private void LoadPackageJson()
+
+        private void LoadPackageJsonRecursive()
         {
             _rootPackageJson = LoadPackageJson(_packageJsonAsset);
             if (_rootPackageJson == null)
             {
+                _packages = null;
                 _legacyAssets = null;
                 return;
             }
 
-            var srcJson = _rootPackageJson;
+            var versions = new Dictionary<string, PackageInfo>();
+            var packageJsons = new Queue<PackageJson>();
+            var legacyAssets = new HashSet<LegacyInfo>();
 
-            var legacyFolders = srcJson.LegacyFolders?.Select(pair => new LegacyInfo(pair.Key, pair.Value)) ?? Array.Empty<LegacyInfo>();
-            var legacyFiles = srcJson.LegacyFiles?.Select(pair => new LegacyInfo(pair.Key, pair.Value)) ?? Array.Empty<LegacyInfo>();
-            _legacyAssets = new HashSet<LegacyInfo>(legacyFolders.Concat(legacyFiles));
+            // will be asked
+            packageJsons.Enqueue(_rootPackageJson);
+
+            while (packageJsons.Count != 0)
+            {
+                var srcJson = packageJsons.Dequeue();
+                var vpmDependencies = srcJson.VpmDependencies;
+                if (vpmDependencies != null)
+                {
+                    foreach (var pair in vpmDependencies)
+                    {
+                        if (versions.ContainsKey(pair.Key)) continue;
+                        var packageJson = AssetDatabase.LoadAssetAtPath<TextAsset>($"Packages/{pair.Key}/package.json");
+                        if (packageJson == null) continue;
+                        var json = LoadPackageJson(packageJson);
+                        if (json == null) continue;
+                        versions[pair.Key] = new PackageInfo(json.Name, json.Version);
+                        packageJsons.Enqueue(json);
+                    }
+                }
+
+                LegacyInfo MakeLegacyInfo(KeyValuePair<string, string> pair) => new LegacyInfo(pair.Key, pair.Value);
+
+                foreach (var info in srcJson.LegacyFolders?.Select(MakeLegacyInfo) ?? Enumerable.Empty<LegacyInfo>())
+                    legacyAssets.Add(info);
+                foreach (var info in srcJson.LegacyFiles?.Select(MakeLegacyInfo) ?? Enumerable.Empty<LegacyInfo>())
+                    legacyAssets.Add(info);
+            }
+
+            _packages = versions.Values.ToList();
+            _legacyAssets = legacyAssets;
         }
 
         [CanBeNull]
@@ -316,7 +350,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         [JsonProperty("name")] public string Name;
         [JsonProperty("displayName")] public string DisplayName;
         [JsonProperty("version")] public string Version;
-        [JsonProperty("dependencies")] public Dictionary<string, string> Dependencies;
+        [JsonProperty("vpmDependencies")] public Dictionary<string, string> VpmDependencies;
 
         [JsonProperty("legacyFolders"), CanBeNull]
         public Dictionary<string, string> LegacyFolders;
@@ -334,10 +368,26 @@ namespace Anatawa12.AutoPackageInstaller.Creator
     }
 #pragma warning restore CS0649
 
-    internal class LegacyInfo
+    internal struct PackageInfo
     {
-        public readonly string Path;
-        public readonly string GUID;
+        [NotNull] public readonly string Id;
+        [NotNull] public readonly string Version;
+
+        public PackageInfo(string id, string version)
+        {
+            Id = id;
+            Version = version;
+        }
+
+        public bool Equals(PackageInfo other) => Id == other.Id && Version == other.Version;
+        public override bool Equals(object obj) => obj is PackageInfo other && Equals(other);
+        public override int GetHashCode() => unchecked(Id.GetHashCode() * 397) ^ Version.GetHashCode();
+    }
+
+    internal struct LegacyInfo
+    {
+        [NotNull] public readonly string Path;
+        [NotNull] public readonly string GUID;
 
         public LegacyInfo(string path, string guid)
         {
@@ -345,23 +395,9 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             GUID = guid;
         }
 
-        protected bool Equals(LegacyInfo other)
-        {
-            return Path == other.Path;
-        }
-
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(null, obj)) return false;
-            if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
-            return Equals((LegacyInfo)obj);
-        }
-
-        public override int GetHashCode()
-        {
-            return (Path != null ? Path.GetHashCode() : 0);
-        }
+        public bool Equals(LegacyInfo other) => Path == other.Path && GUID == other.GUID;
+        public override bool Equals(object obj) => obj is LegacyInfo other && Equals(other);
+        public override int GetHashCode() => unchecked((Path.GetHashCode() * 397) ^ GUID.GetHashCode());
     }
 
     internal class CreatorConfigJson
