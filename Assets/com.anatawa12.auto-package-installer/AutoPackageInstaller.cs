@@ -97,7 +97,7 @@ namespace Anatawa12.AutoPackageInstaller
                     select new VpmUserRepository(repoURL))
                 .ToList();
 
-            var dependencies = config.Get("vpmDependencies", JsonType.Obj, true);
+            var dependencies = config.Get("vpmDependencies", JsonType.Obj, true) ?? new JsonObj();
             var updates = (
                     from package in dependencies.Keys
                     let requestedVersion = dependencies.Get(package, JsonType.String)
@@ -107,20 +107,23 @@ namespace Anatawa12.AutoPackageInstaller
                 .ToList();
 
             var removePaths = new List<string>();
-            var legacyAssets = config.Get("legacyAssets", JsonType.Obj);
-            foreach (var key in legacyAssets.Keys)
+            var legacyAssets = config.Get("legacyAssets", JsonType.Obj, true);
+            if (legacyAssets != null)
             {
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
-                if (asset != null)
+                foreach (var key in legacyAssets.Keys)
                 {
-                    removePaths.Add(AssetDatabase.GetAssetPath(asset));
-                }
-                else
-                {
-                    var guid = legacyAssets.Get(key, JsonType.String);
-                    var path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (!string.IsNullOrEmpty(path))
-                        removePaths.Add(path);
+                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
+                    if (asset != null)
+                    {
+                        removePaths.Add(AssetDatabase.GetAssetPath(asset));
+                    }
+                    else
+                    {
+                        var guid = legacyAssets.Get(key, JsonType.String);
+                        var path = AssetDatabase.GUIDToAssetPath(guid);
+                        if (!string.IsNullOrEmpty(path))
+                            removePaths.Add(path);
+                    }
                 }
             }
 
