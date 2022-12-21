@@ -63,7 +63,15 @@ namespace Anatawa12.AutoPackageInstaller
             Debug.Log("In dev env. skipping auto install & remove self");
             return;
 #endif
-            DoInstall();
+            try
+            {
+                DoInstall();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
+            }
             RemoveSelf();
         }
 
@@ -81,18 +89,19 @@ namespace Anatawa12.AutoPackageInstaller
             var vpmGlobalSetting = VpmGlobalSetting.Load();
 
             var vpmRepositories = config.Get("vpmRepositories", JsonType.List, true) ?? new List<object>();
-            var vpmRepoUrls = (
+            var vpmRepos = (
                     from urlInObj in vpmRepositories
                     let repoURL = urlInObj as string
                     where repoURL != null
                     where !vpmGlobalSetting.RepositoryExists(repoURL)
-                    select repoURL)
+                    select new VpmUserRepository(repoURL))
                 .ToList();
 
             var dependencies = config.Get("vpmDependencies", JsonType.Obj, true);
             var updates = (
                     from package in dependencies.Keys
-                    let version = dependencies.Get(package, JsonType.String)
+                    let requestedVersion = dependencies.Get(package, JsonType.String)
+                    let version = ResolveVersion(package, requestedVersion, vpmRepos)
                     where vpmManifest.Dependencies.NeedsUpdate(package, version) || vpmManifest.Locked.NeedsUpdate(package, version)
                     select (package, version))
                 .ToList();
@@ -144,8 +153,8 @@ namespace Anatawa12.AutoPackageInstaller
             if (!EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
                 return;
 
-            foreach (var vpmRepoUrl in vpmRepoUrls)
-                vpmGlobalSetting.AddPackageRepository(vpmRepoUrl);
+            foreach (var repo in vpmRepos)
+                vpmGlobalSetting.AddPackageRepository(repo);
 
             foreach (var (key, value) in updates)
                 vpmManifest.AddPackage(key, value);
@@ -167,6 +176,42 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             VRChatPackageManager.CallResolver();
+        }
+
+        private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos)
+        {
+            if (!requestedVersion.StartsWith("~") && !requestedVersion.StartsWith("^")) return requestedVersion;
+
+            var caret = requestedVersion[0] == '^';
+            var requestedParsed = Version.Parse(requestedVersion.Substring(1));
+            var upperBound = caret ? UpperBoundForCaret(requestedParsed) : UpperBoundForTilda(requestedParsed);
+            var allowPrerelease = requestedParsed.Prerelease != null;
+            return vpmRepos.SelectMany(repo => repo.GetVersions(package).Select(Version.Parse))
+                .Where(v => (allowPrerelease || v.Prerelease == null) && requestedParsed <= v && v < upperBound)
+                .Concat(new[] { requestedParsed })
+                .Max()
+                .ToString();
+        }
+
+        private static Version UpperBoundForTilda(Version requestedVersion) =>
+            requestedVersion.HasMinor
+                ? new Version(requestedVersion.Major, requestedVersion.Minor + 1, -1)
+                : new Version(requestedVersion.Major + 1, -1, -1);
+
+        private static Version UpperBoundForCaret(Version requestedVersion)
+        {
+            if (requestedVersion.Major != 0)
+                return new Version(requestedVersion.Major + 1, -1, -1);
+            if (requestedVersion.Minor != 0)
+                return new Version(requestedVersion.Major, requestedVersion.Minor + 1, -1);
+            if (requestedVersion.Patch != 0)
+                return new Version(requestedVersion.Major, requestedVersion.Minor, requestedVersion.Patch + 1);
+            // this mean, 0 or 0.0 or 0.0.0. use 1 or 0.1 or 0.0.1
+            if (requestedVersion.HasPatch)
+                return new Version(0, 0, 1);
+            if (requestedVersion.HasMinor)
+                return new Version(0, 1, -1);
+            return new Version(1, -1, -1);
         }
 
         public static void RemoveSelf()
@@ -308,6 +353,7 @@ namespace Anatawa12.AutoPackageInstaller
         public JsonObj Json { get; }
         public string Url { get; }
         public string Name { get; }
+        private readonly Lazy<JsonObj> _packages;
 
         public VpmUserRepository(string url) : this(url,
             new JsonParser(VRChatPackageManager.FetchText(url)).Parse(JsonType.Obj))
@@ -319,7 +365,14 @@ namespace Anatawa12.AutoPackageInstaller
             Url = url;
             Json = json;
             Name = Json.Get("name", JsonType.String);
+            _packages = new Lazy<JsonObj>(() => Json.Get("packages", JsonType.Obj, true), false);
         }
+
+        public IEnumerable<string> GetVersions(string package) =>
+            _packages.Value?.Get(package, JsonType.Obj, true)
+                ?.Get("versions", JsonType.Obj, true)
+                ?.Keys
+            ?? Array.Empty<string>();
     }
 
     internal class VpmGlobalSetting : IDisposable
@@ -572,6 +625,10 @@ namespace Anatawa12.AutoPackageInstaller
 
             return Prerelease.Length.CompareTo(other.Prerelease.Length);
         }
+
+        public static Version Parse(string str) => TryParse(str, out var result)
+            ? result
+            : throw new ArgumentException("invalid version", nameof(str));
 
         public static bool TryParse(string str, out Version version)
         {
