@@ -113,8 +113,6 @@ namespace Anatawa12.AutoPackageInstaller
                 }
             }
 
-            /*
-            // TODO: Research about legacyFiles and uncomment this
             var legacyFiles = config.Get("legacyFiles", JsonType.Obj);
             foreach (var key in legacyFiles.Keys)
             {
@@ -131,7 +129,6 @@ namespace Anatawa12.AutoPackageInstaller
                         removePaths.Add(path);
                 }
             }
-            */
 
             var confirmMessage = "You're installing the following packages:\n";
             confirmMessage += string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}"));
