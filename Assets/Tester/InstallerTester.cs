@@ -23,11 +23,13 @@ namespace Anatawa12.AutoPackageInstaller
                 AutoPackageInstaller.RemoveSelf();
             _repoURL = GUILayout.TextField(_repoURL);
             if (GUILayout.Button("Add Repository"))
-                Debug.Log($"AddRepo: {VRChatPackageManager.AddPackageRepository(_repoURL)}");
+                using (var setting = VpmGlobalSetting.Load())
+                    Debug.Log(setting.AddPackageRepository(_repoURL) ? "AddRepo: Success" : "AddRepo: AlreadyExists");
             _packageId = EditorGUILayout.TextField("pkg id", _packageId);
             _packageVersion = EditorGUILayout.TextField("pkg ver", _packageVersion);
             if (GUILayout.Button("Add Package"))
-                Debug.Log($"AddPackage: {VRChatPackageManager.AddPackage(_packageId, _packageVersion, callResolver: false)}");
+                using (var manifest = VpmManifest.Load())
+                    Debug.Log(manifest.AddPackage(_packageId, _packageVersion) ? "AddPackage: Success" : "AddPackage: AlreadyExists");
             if (GUILayout.Button("Call Resolver"))
                 VRChatPackageManager.CallResolver();
         }

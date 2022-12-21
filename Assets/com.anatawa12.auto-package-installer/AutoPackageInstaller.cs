@@ -42,10 +42,9 @@ using UnityEngine;
 namespace Anatawa12.AutoPackageInstaller
 {
     [InitializeOnLoad]
-    public class AutoPackageInstaller
+    public static class AutoPackageInstaller
     {
         private const string ConfigGuid = "9028b92d14f444e2b8c389be130d573f";
-        private const string ManifestPath = "Packages/manifest.json";
 
         private static readonly string[] ToBeRemoved =
         {
@@ -68,10 +67,6 @@ namespace Anatawa12.AutoPackageInstaller
             RemoveSelf();
         }
 
-        public AutoPackageInstaller()
-        {
-        }
-
         public static void DoInstall()
         {
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
@@ -82,18 +77,25 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
-            var manifest = new JsonParser(File.ReadAllText(ManifestPath, Encoding.UTF8)).Parse(JsonType.Obj);
+            var vpmManifest = VpmManifest.Load();
+            var vpmGlobalSetting = VpmGlobalSetting.Load();
 
-            var dependencies = config.Get("dependencies", JsonType.Obj);
-            var manifestDependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
-            var updates = (
-                    from key in dependencies.Keys
-                    let value = dependencies.Get(key, JsonType.String)
-                    let version = manifestDependencies.Get(key, JsonType.String, true)
-                    where version == null || ShouldUpdatePackage(version, value)
-                    select (key, value))
+            var vpmRepositories = config.Get("vpmRepositories", JsonType.List, true) ?? new List<object>();
+            var vpmRepoUrls = (
+                    from urlInObj in vpmRepositories
+                    let repoURL = urlInObj as string
+                    where repoURL != null
+                    where !vpmGlobalSetting.RepositoryExists(repoURL)
+                    select repoURL)
                 .ToList();
 
+            var dependencies = config.Get("vpmDependencies", JsonType.Obj, true);
+            var updates = (
+                    from package in dependencies.Keys
+                    let version = dependencies.Get(package, JsonType.String)
+                    where vpmManifest.Dependencies.NeedsUpdate(package, version) || vpmManifest.Locked.NeedsUpdate(package, version)
+                    select (package, version))
+                .ToList();
 
             var removePaths = new List<string>();
             var legacyFolders = config.Get("legacyFolders", JsonType.Obj);
@@ -131,7 +133,7 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             var confirmMessage = "You're installing the following packages:\n";
-            confirmMessage += string.Join("\n", updates.Select(p => $"{p.key} version {GetVersionName(p.value)}"));
+            confirmMessage += string.Join("\n", updates.Select(p => $"{p.package} version {p.version}"));
 
             if (removePaths.Count != 0)
             {
@@ -142,20 +144,14 @@ namespace Anatawa12.AutoPackageInstaller
             if (!EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
                 return;
 
+            foreach (var vpmRepoUrl in vpmRepoUrls)
+                vpmGlobalSetting.AddPackageRepository(vpmRepoUrl);
+
             foreach (var (key, value) in updates)
-                manifestDependencies.Put(key, value, JsonType.String);
+                vpmManifest.AddPackage(key, value);
 
-            try
-            {
-                File.Copy(ManifestPath, ManifestPath + ".bak", true);
-            }
-            catch (IOException e)
-            {
-                Debug.LogError($"error during creating backup: {e}");
-            }
-
-            File.WriteAllText(ManifestPath, JsonWriter.Write(manifest));
-            SetDirty(ManifestPath);
+            vpmGlobalSetting.Save();
+            vpmManifest.Save();
 
             try
             {
@@ -169,29 +165,8 @@ namespace Anatawa12.AutoPackageInstaller
             {
                 Debug.LogError($"error during deleting legacy: {e}");
             }
-        }
 
-        private static string GetVersionName(string versionOrGitUrl)
-        {
-            if (versionOrGitUrl.StartsWith("git") || versionOrGitUrl.Contains(".git"))
-            {
-                var index = versionOrGitUrl.IndexOf('#');
-                if (index == -1)
-                    return "latest";
-                var name = versionOrGitUrl.Substring(index + 1);
-                if (name.StartsWith("v"))
-                    name = name.Substring(1);
-                return name;
-            }
-
-            return versionOrGitUrl;
-        }
-
-        private static bool ShouldUpdatePackage(string current, string value)
-        {
-            if (Version.TryParse(current, out var currentVersion) && Version.TryParse(value, out var valueVersion))
-                return currentVersion.CompareTo(valueVersion) < 0;
-            return true;
+            VRChatPackageManager.CallResolver();
         }
 
         public static void RemoveSelf()
@@ -246,130 +221,200 @@ namespace Anatawa12.AutoPackageInstaller
 
     #region VPM
 
+    internal class VpmManifestDependencies
+    {
+        private readonly JsonObj _body;
+
+        public VpmManifestDependencies(JsonObj body)
+        {
+            _body = body;
+        }
+
+        public string GetVersion(string package) =>
+            _body.Get(package, JsonType.Obj, true)
+                ?.Get("version", JsonType.String, true);
+
+        public bool NeedsUpdate(string package, string version)
+        {
+            var foundVersion = GetVersion(package);
+            // if version in dependencies is newer, do not update
+            return foundVersion == null 
+                   || !Version.TryParse(version, out var requestedParsed) 
+                   || !Version.TryParse(foundVersion, out var foundParsed) 
+                   || foundParsed < requestedParsed;
+        }
+
+        public bool AddOrUpdate(string package, string version, bool overrideNewer = false)
+        {
+            if (!overrideNewer && !NeedsUpdate(package, version)) return false;
+            _body.GetOrPut(package, () => new JsonObj(), JsonType.Obj)
+                .Put("version", version, JsonType.String);
+            return true;
+        }
+    }
+
+    internal class VpmManifest : IDisposable
+    {
+        private readonly string _path;
+        private readonly JsonObj _body;
+
+        public VpmManifestDependencies Dependencies { get; }
+        public VpmManifestDependencies Locked { get; }
+
+        public VpmManifest(string path) : this(path, VRChatPackageManager.ReadJsonOrEmpty(path))
+        {
+        }
+
+        public VpmManifest(string path, JsonObj body)
+        {
+            _path = path;
+            _body = body;
+
+            Dependencies = new VpmManifestDependencies(body.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj));
+            Locked = new VpmManifestDependencies(body.GetOrPut("locked", () => new JsonObj(), JsonType.Obj));
+        }
+
+        // add to dependencies & lock if needed
+        public bool AddPackage(string package, string version, bool overrideNewer = false)
+        {
+            if (overrideNewer)
+            {
+                Dependencies.AddOrUpdate(package, version, true);
+                Locked.AddOrUpdate(package, version, true);
+                return true;
+            }
+
+            if (!Dependencies.NeedsUpdate(package, version)) return false;
+            Dependencies.AddOrUpdate(package, version);
+
+            if (!Locked.NeedsUpdate(package, version)) return false;
+            Locked.AddOrUpdate(package, version);
+
+            return true;
+        }
+
+        public static VpmManifest Load() => new VpmManifest(VRChatPackageManager.VpmManifestPath);
+
+        public void Save()
+        {
+            File.WriteAllText(_path, JsonWriter.Write(_body), Encoding.UTF8);
+        }
+
+        void IDisposable.Dispose() => Save();
+    }
+
+    internal class VpmUserRepository
+    {
+        public JsonObj Json { get; }
+        public string Url { get; }
+        public string Name { get; }
+
+        public VpmUserRepository(string url) : this(url,
+            new JsonParser(VRChatPackageManager.FetchText(url)).Parse(JsonType.Obj))
+        {
+        }
+
+        public VpmUserRepository(string url, JsonObj json)
+        {
+            Url = url;
+            Json = json;
+            Name = Json.Get("name", JsonType.String);
+        }
+    }
+
+    internal class VpmGlobalSetting : IDisposable
+    {
+        private readonly string _path;
+        private readonly JsonObj _body;
+
+        private readonly List<object> _userRepos;
+
+        public VpmGlobalSetting(string path) : this(path, VRChatPackageManager.ReadJsonOrEmpty(path))
+        {
+        }
+
+        public VpmGlobalSetting(string path, JsonObj body)
+        {
+            _path = path;
+            _body = body;
+            
+            _userRepos = body.GetOrPut("userRepos", () => new List<object>(), JsonType.List);
+        }
+
+        public bool RepositoryExists(string url) =>
+            _userRepos.Any(o => o is JsonObj userRepo && userRepo.Get("url", JsonType.String) == url);
+
+        public bool AddPackageRepository(string url)
+        {
+            if (RepositoryExists(url)) return false;
+            return AddPackageRepository(new VpmUserRepository(url));
+        }
+
+        public bool AddPackageRepository(VpmUserRepository repository)
+        {
+            // find existing
+            if (RepositoryExists(repository.Url)) return false;
+
+            // generate local repo path
+            var localRepoPath = Path.Combine(VRChatPackageManager.GlobalReposFolder, Guid.NewGuid() + ".json");
+            while (File.Exists(localRepoPath))
+                localRepoPath = Path.Combine(VRChatPackageManager.GlobalReposFolder, Guid.NewGuid() + ".json");
+
+            var repoName = repository.Name;
+
+            // create local repo info
+            File.WriteAllText(localRepoPath, JsonWriter.Write(new JsonObj
+            {
+                { "repo", repository.Json },
+                {
+                    "CreationInfo", new JsonObj
+                    {
+                        { "localPath", localRepoPath },
+                        { "url", repository.Url },
+                        { "name", repoName },
+                    }
+                },
+
+                {
+                    "Description", new JsonObj
+                    {
+                        { "name", repoName },
+                        { "type", "JsonRepo" },
+                    }
+                },
+            }), Encoding.UTF8);
+
+            // update settings
+            _userRepos.Add(new JsonObj
+            {
+                {"localPath", localRepoPath},
+                {"url", repository.Url},
+                {"name", repoName},
+            });
+
+            return true;
+        }
+
+        public void Save()
+        {
+            File.WriteAllText(_path, JsonWriter.Write(_body), Encoding.UTF8);
+        }
+
+        public static VpmGlobalSetting Load() => new VpmGlobalSetting(VRChatPackageManager.GlobalSettingPath);
+
+        void IDisposable.Dispose() => Save();
+    }
+
     internal class VRChatPackageManager
     {
         public static string GlobalFoler = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VRChatCreatorCompanion");
 
-        public static string GlobalSettingFile = Path.Combine(GlobalFoler, "settings.json");
+        public static string GlobalSettingPath = Path.Combine(GlobalFoler, "settings.json");
         public static string GlobalReposFolder = Path.Combine(GlobalFoler, "Repos");
         public static string ProjectFolder = Directory.GetCurrentDirectory();
-        public static string VpmManifest = Path.Combine(ProjectFolder, "Packages", "vpm-manifest.json");
-
-        public enum AddPackageRepositoryResult
-        {
-            Success,
-            AlreadyExists
-        }
-
-        public static AddPackageRepositoryResult AddPackageRepository(string url)
-        {
-            // read setting
-            var setting = new JsonParser(File.ReadAllText(GlobalSettingFile, Encoding.UTF8)).Parse(JsonType.Obj);
-            var userRepos = setting.Get("userRepos", JsonType.List);
-
-            // find existing
-            if (userRepos.Any(o => o is JsonObj userRepo && userRepo.Get("url", JsonType.String) == url))
-                return AddPackageRepositoryResult.AlreadyExists;
-
-            // get repo contents
-            var response = new HttpClient().GetAsync(url).GetAwaiter().GetResult();
-            if (!response.IsSuccessStatusCode)
-                throw new IOException($"Getting {url} failed");
-
-            var repoJsonString = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            var repoJson = new JsonParser(repoJsonString).Parse(JsonType.Obj);
-
-            // generate local repo path
-            var localRepoPath = Path.Combine(GlobalReposFolder, Guid.NewGuid() + ".json");
-            while (File.Exists(localRepoPath))
-                localRepoPath = Path.Combine(GlobalReposFolder, Guid.NewGuid() + ".json");
-
-            var repoName = repoJson.Get("name", JsonType.String);
-
-            // create local repo info
-            var localRepo = new JsonObj();
-            localRepo.Put("repo", repoJson, JsonType.Obj);
-
-            var creationInfo = new JsonObj();
-            creationInfo.Put("localPath", localRepoPath, JsonType.String);
-            creationInfo.Put("url", url, JsonType.String);
-            creationInfo.Put("name", repoName, JsonType.String);
-            localRepo.Put("CreationInfo", creationInfo, JsonType.Obj);
-
-            var description = new JsonObj();
-            description.Put("name", repoName, JsonType.String);
-            description.Put("type", "JsonRepo", JsonType.String);
-            localRepo.Put("Description", description, JsonType.Obj);
-
-            File.WriteAllText(localRepoPath, JsonWriter.Write(localRepo), Encoding.UTF8);
-
-            // update settings
-            var newRepo = new JsonObj();
-            newRepo.Put("localPath", localRepoPath, JsonType.String);
-            newRepo.Put("url", url, JsonType.String);
-            newRepo.Put("name", repoName, JsonType.String);
-            userRepos.Add(newRepo);
-
-            File.WriteAllText(GlobalSettingFile, JsonWriter.Write(setting), Encoding.UTF8);
-
-            return AddPackageRepositoryResult.Success;
-        }
-
-        public enum AddPackageResult
-        {
-            Updated,
-            AlreadyExists
-        }
-
-        // add to dependencies & lock and run resolver to add package
-        public static AddPackageResult AddPackage(string package, string version, bool overrideNewer = false,
-            bool callResolver = true)
-        {
-            var requestedIsSemver = Version.TryParse(version, out var requestedParsed);
-            JsonObj manifest;
-            // read setting
-            try
-            {
-                manifest = new JsonParser(File.ReadAllText(VpmManifest, Encoding.UTF8)).Parse(JsonType.Obj);
-            }
-            catch (FileNotFoundException)
-            {
-                manifest = new JsonObj();
-            }
-
-            var dependencies = manifest.GetOrPut("dependencies", () => new JsonObj(), JsonType.Obj);
-            var locked = manifest.GetOrPut("locked", () => new JsonObj(), JsonType.Obj);
-
-            var foundInDependencies = dependencies.GetOrPut(package, () => new JsonObj(), JsonType.Obj);
-            var foundVersion = foundInDependencies.Get("version", JsonType.String, true);
-            // if version in dependencies is newer, do not update
-            if (!overrideNewer && requestedIsSemver && foundVersion != null
-                && Version.TryParse(foundVersion, out var foundParsed) && foundParsed >= requestedParsed)
-                return AddPackageResult.AlreadyExists;
-
-            foundInDependencies.Put("version", version, JsonType.String);
-
-
-            // add or update lock
-            var lockedComponent = locked.GetOrPut(package, () => new JsonObj(), JsonType.Obj);
-            var lockedVersion = lockedComponent.Get("version", JsonType.String, true);
-
-            // if version in lock is newer, do not update
-            if (!overrideNewer && requestedIsSemver && lockedVersion != null
-                && Version.TryParse(lockedVersion, out var lockedParsed) && lockedParsed >= requestedParsed)
-                return AddPackageResult.AlreadyExists;
-
-            lockedComponent.Put("version", version, JsonType.String);
-
-            // save manifest
-            File.WriteAllText(VpmManifest, JsonWriter.Write(manifest), Encoding.UTF8);
-
-            if (callResolver)
-                CallResolver();
-            return AddPackageResult.Updated;
-        }
+        public static string VpmManifestPath = Path.Combine(ProjectFolder, "Packages", "vpm-manifest.json");
 
         public static void CallResolver()
         {
@@ -400,6 +445,27 @@ namespace Anatawa12.AutoPackageInstaller
             }
 
             SessionState.SetBool("PROJECT_LOADED", false);
+        }
+
+        public static JsonObj ReadJsonOrEmpty(string path)
+        {
+            try
+            {
+                return new JsonParser(File.ReadAllText(path, Encoding.UTF8)).Parse(JsonType.Obj);
+            }
+            catch (FileNotFoundException)
+            {
+                return new JsonObj();
+            }
+        }
+
+        public static string FetchText(string url)
+        {
+            var response = new HttpClient().GetAsync(url).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                throw new IOException($"Getting {url} failed");
+
+            return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         }
     }
 
