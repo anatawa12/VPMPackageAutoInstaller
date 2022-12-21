@@ -37,11 +37,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         private TextAsset _packageJsonAsset;
         private PackageJson _rootPackageJson;
         private ManifestJson _manifestJson;
-        private List<PackageInfo> _packages;
         private HashSet<LegacyInfo> _legacyAssets;
-        private string _gitRemoteURL;
-        private string _tagName;
-        private (string remote, string tag) _inferredGitInfo;
 
         private void OnGUI()
         {
@@ -54,24 +50,12 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 LoadPackageInfos();
             _shouldReload = false;
 
-            if (_packages != null)
+            if (_legacyAssets != null)
             {
-                var url = EditorGUILayout.TextField("git url", _gitRemoteURL ?? _inferredGitInfo.remote ?? "");
-                if (url != (_gitRemoteURL ?? _inferredGitInfo.remote ?? ""))
-                    _gitRemoteURL = url;
-                
-                var tag = EditorGUILayout.TextField("git tag", _tagName ?? _inferredGitInfo.tag ?? "");
-                if (tag != (_tagName ?? _inferredGitInfo.tag ?? ""))
-                    _tagName = tag;
-
-                if (_packages.Count != 0)
-                {
-                    EditorGUILayout.LabelField("The following packages will also be installed");
-                    foreach (var package in _packages)
-                    {
-                        EditorGUILayout.LabelField($"{package.Id}: {package.GitURL}");
-                    }
-                }
+                // TODO: allow creator to choose from ~, ^ and specific version descriptor.
+                //var tag = EditorGUILayout.TextField("git tag", _tagName ?? _inferredGitInfo.tag ?? "");
+                //if (tag != (_tagName ?? _inferredGitInfo.tag ?? ""))
+                //    _tagName = tag;
 
                 if (GUILayout.Button("Create Installer"))
                 {
@@ -91,26 +75,6 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         {
             try
             {
-
-                var remoteUrl = _gitRemoteURL ?? _inferredGitInfo.remote ?? "";
-                if (string.IsNullOrEmpty(remoteUrl))
-                {
-                    EditorUtility.DisplayDialog("ERROR", "Please set git remote url", "OK");
-                    return;
-                }
-
-                var remoteTag = _tagName ?? _inferredGitInfo.tag ?? "";
-                if (string.IsNullOrEmpty(remoteTag))
-                {
-                    if (!EditorUtility.DisplayDialog("WARNING", "version tag not specified. " +
-                                                                "this will make installer for LATEST version. " +
-                                                                "Are you sure?", "OK", "NO"))
-                        return;
-                }
-
-                if (!string.IsNullOrEmpty(remoteTag))
-                    remoteUrl = $"{remoteUrl}#{remoteTag}";
-
                 var path = EditorUtility.SaveFilePanel("Create Installer...",
                     "",
                     (_rootPackageJson.DisplayName ?? _rootPackageJson.Name) + "-installer.unitypackage",
@@ -118,12 +82,8 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 if (string.IsNullOrEmpty(path)) return;
 
                 var dependencies = new Dictionary<string, string>();
-                foreach (var package in _packages)
-                {
-                    dependencies[package.Id] = package.GitURL;
-                }
 
-                dependencies[_rootPackageJson.Name] = remoteUrl;
+                dependencies[_rootPackageJson.Name] = _rootPackageJson.Version;
 
                 var legacyAssets = _legacyAssets.Count == 0 ? null : _legacyAssets.ToDictionary(i => i.Path, i => i.GUID);
 
@@ -159,289 +119,27 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         {
             if (_packageJsonAsset == null)
             {
-                _packages = null;
                 _legacyAssets = null;
                 return;
             }       
-            LoadPackageJsonRecursive();
-            if (_packages == null) return;
-            InferRootPackageGitUrl();
+            LoadPackageJson();
+            if (_legacyAssets == null) return;
         }
 
-        private void InferRootPackageGitUrl()
-        {
-            var packageJsonPath = AssetDatabase.GetAssetPath(_packageJsonAsset);
-            if (packageJsonPath == null || !File.Exists(packageJsonPath)) return;
-            packageJsonPath = Path.GetFullPath(packageJsonPath);
-            var packageDir = Path.GetDirectoryName(packageJsonPath);
-
-            var directoryName = packageDir;
-            while (!string.IsNullOrEmpty(directoryName))
-            {
-                var gitDir = Path.Combine(directoryName, ".git");
-                if (Directory.Exists(gitDir))
-                {
-                    var newInferred = TryParseGitRepo(gitDir, _rootPackageJson.Version);
-                    var inRepoPath = packageDir.Substring(directoryName.Length + 1);
-                    if (!string.IsNullOrEmpty(inRepoPath))
-                    {
-                        newInferred.remote += "?path=" + UrlEncode(inRepoPath.Replace('\\', '/'));
-                    }
-
-                    if (newInferred.remote != null && _inferredGitInfo.remote == _gitRemoteURL ||
-                        string.IsNullOrEmpty(_gitRemoteURL))
-                        _gitRemoteURL = null;
-                    if (newInferred.tag != null && _inferredGitInfo.tag == _tagName ||
-                        string.IsNullOrEmpty(_tagName))
-                        _tagName = null;
-                    _inferredGitInfo = newInferred;
-                    return;
-                }
-
-                directoryName = Path.GetDirectoryName(directoryName);
-            }
-
-            _inferredGitInfo = (null, null);
-        }
-
-        private static class UrlNonEncodedCharTable
-        {
-            public static BitArray bits = new BitArray(128);
-
-            static UrlNonEncodedCharTable()
-            {
-                // most codepoints between ' ' and '~' are non-encoded
-                for (int i = ' '; i <= '~'; i++)
-                    bits[i] = true;
-                // query percent-encode set
-                bits[' '] = false;
-                bits['"'] = false;
-                bits['#'] = false;
-                bits['<'] = false;
-                bits['>'] = false;
-                bits['?'] = false;
-                bits['`'] = false;
-                bits['{'] = false;
-                bits['}'] = false;
-            }
-        }
-
-        private static string UrlEncode(string text)
-        {
-            var bytes = Encoding.UTF8.GetBytes(text);
-            var builder = new StringBuilder(bytes.Length);
-            foreach (var b in bytes)
-            {
-                if (b < 128 && UrlNonEncodedCharTable.bits[b])
-                    builder.Append((char)b);
-                else
-                    builder.Append('%').Append($"{b:x2}");
-            }
-
-            return builder.ToString();
-        }
-
-        private (string remote, string tag) TryParseGitRepo(string gitDir, string currentVersion)
-        {
-            try
-            {
-                var remote = GetRemoteUrlFromGitConfig(gitDir);
-                if (remote == null) return (null, null);
-                var tag = GetTagNameForCurrentVersion(gitDir, currentVersion);
-                return (remote, tag);
-            }
-            catch (IOException)
-            {
-                return (null, null);
-            }
-        }
-
-        private string GetRemoteUrlFromGitConfig(string gitDir)
-        {
-            string ParseGitEscape(string literal)
-            {
-                if (literal.Length == 0) return null;
-                var builder = new StringBuilder(literal.Length);
-                var i = 0;
-                var quoted = false;
-
-                if (literal[i] == '"')
-                {
-                    i++;
-                    quoted = true;
-                }
-
-                i--;
-                while (++i < literal.Length)
-                {
-                    if (literal[i] == '"')
-                    {
-                        if (quoted && i + 1 == literal.Length)
-                            return builder.ToString();
-                        return null;
-                    }
-                    else if (literal[i] == '\\')
-                    {
-                        if (++i >= literal.Length) break;
-                        switch (literal[i])
-                        {
-                            case '"':
-                            case '\\':
-                                builder.Append(literal[i]);
-                                break;
-                            case 'n':
-                                builder.Append('\n');
-                                break;
-                            case 'r':
-                                builder.Append('\r');
-                                break;
-                            case 'b':
-                                builder.Append('\b');
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        builder.Append(literal[i]);
-                    }
-                }
-
-                if (quoted) return null;
-                return builder.ToString();
-            }
-
-            var lines = File.ReadAllLines(Path.Combine(gitDir, "config"));
-            string currentRemoteName = null;
-            string urlCandidate = null;
-            foreach (var line in lines.Select(s => s.Trim()))
-            {
-                if (line.StartsWith("[remote \""))
-                {
-                    currentRemoteName = ParseGitEscape(line.Substring(
-                        "[remote ".Length, line.Length - "[remote ".Length - "]".Length));
-                }
-                else if (line.StartsWith("["))
-                {
-                    currentRemoteName = null;
-                }
-                else
-                {
-                    if (currentRemoteName == null) continue;
-
-                    var pair = line.Split(new[] { '=' }, 2);
-                    if (pair[0].Trim() != "url" || pair.Length != 2) continue;
-                    Debug.Log($"url for remote section {currentRemoteName} found");
-
-                    if (currentRemoteName == "origin")
-                    {
-                        return ParseGitEscape(pair[1].Trim());
-                    }
-
-                    if (urlCandidate == null)
-                    {
-                        urlCandidate = ParseGitEscape(pair[1].Trim());
-                    }
-                }
-            }
-
-            return urlCandidate;
-        }
-
-        private string GetTagNameForCurrentVersion(string gitDir, string currentVersion)
-        {
-            var tagsDirPath = Path.Combine(gitDir, "refs", "tags");
-            List<string> tags = Directory.GetFiles(tagsDirPath)
-                .Where(tag => File.Exists(Path.Combine(tagsDirPath, tag)))
-                .ToList();
-
-            // first, find tag by name
-            return tags.Where(tag =>
-            {
-                var versionIndex = tag.IndexOf(currentVersion, StringComparison.Ordinal);
-                return versionIndex != -1
-                       && (versionIndex == 0 || !char.IsDigit(tag[versionIndex - 1]))
-                       && (versionIndex + currentVersion.Length == tag.Length ||
-                           !char.IsDigit(tag[versionIndex + currentVersion.Length]));
-            }).SingleOrDefault();
-        }
-
-        private void LoadPackageJsonRecursive()
+        private void LoadPackageJson()
         {
             _rootPackageJson = LoadPackageJson(_packageJsonAsset);
             if (_rootPackageJson == null)
             {
-                _packages = null;
                 _legacyAssets = null;
                 return;
             }
 
-            var versions = new Dictionary<string, string>();
-            var order = new HashSet<string>();
-            var packageJsons = new Queue<PackageJson>();
-            var legacyAssets = new HashSet<LegacyInfo>();
+            var srcJson = _rootPackageJson;
 
-            // will be asked
-            packageJsons.Enqueue(_rootPackageJson);
-            versions[_rootPackageJson.Name] = "DUMMY";
-
-            while (packageJsons.Count != 0)
-            {
-                var srcJson = packageJsons.Dequeue();
-                var gitDependencies
-
-                 = srcJson.GitDependencies;
-                if (gitDependencies != null)
-                {
-                    foreach (var pair in gitDependencies)
-                    {
-                        if (versions.TryGetValue(pair.Key, out var existing))
-                        {
-                            if (existing != pair.Value)
-                            {
-                                versions[pair.Key] = GetInstalledVersion(pair.Key) ?? pair.Value;
-                            }
-
-                            continue;
-                        }
-
-                        versions[pair.Key] = pair.Value;
-
-                        var packageJson = AssetDatabase.LoadAssetAtPath<TextAsset>($"Packages/{pair.Key}/package.json");
-                        order.Add(pair.Key);
-                        if (packageJson == null) continue;
-                        var json = LoadPackageJson(packageJson);
-                        if (json != null)
-                            packageJsons.Enqueue(json);
-                    }
-                }
-
-                if (srcJson.LegacyFolders != null)
-                {
-                    foreach (var pathGuidPair in srcJson.LegacyFolders)
-                    {
-                        legacyAssets.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
-                    }
-                }
-
-                if (srcJson.LegacyFiles != null)
-                {
-                    foreach (var pathGuidPair in srcJson.LegacyFiles)
-                    {
-                        legacyAssets.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
-                    }
-                }
-            }
-
-            _packages = order.Select(id => new PackageInfo(id, versions[id])).ToList();
-            _legacyAssets = legacyAssets;
-        }
-
-        private string GetInstalledVersion(string pkgId)
-        {
-            if (_manifestJson == null)
-                _manifestJson = JsonConvert.DeserializeObject<ManifestJson>(
-                    File.ReadAllText("Packages/manifest.json", Encoding.UTF8));
-            return _manifestJson?.Dependencies?[pkgId];
+            var legacyFolders = srcJson.LegacyFolders?.Select(pair => new LegacyInfo(pair.Key, pair.Value)) ?? Array.Empty<LegacyInfo>();
+            var legacyFiles = srcJson.LegacyFiles?.Select(pair => new LegacyInfo(pair.Key, pair.Value)) ?? Array.Empty<LegacyInfo>();
+            _legacyAssets = new HashSet<LegacyInfo>(legacyFolders.Concat(legacyFiles));
         }
 
         [CanBeNull]
@@ -619,7 +317,6 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         [JsonProperty("displayName")] public string DisplayName;
         [JsonProperty("version")] public string Version;
         [JsonProperty("dependencies")] public Dictionary<string, string> Dependencies;
-        [JsonProperty("gitDependencies")] public Dictionary<string, string> GitDependencies;
 
         [JsonProperty("legacyFolders"), CanBeNull]
         public Dictionary<string, string> LegacyFolders;
@@ -636,18 +333,6 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         public Dictionary<string, string> Dependencies;
     }
 #pragma warning restore CS0649
-
-    internal class PackageInfo
-    {
-        public readonly string Id;
-        public readonly string GitURL;
-
-        public PackageInfo(string id, string gitURL)
-        {
-            Id = id;
-            GitURL = gitURL;
-        }
-    }
 
     internal class LegacyInfo
     {
