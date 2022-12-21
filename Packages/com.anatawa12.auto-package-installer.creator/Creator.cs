@@ -38,8 +38,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         private PackageJson _rootPackageJson;
         private ManifestJson _manifestJson;
         private List<PackageInfo> _packages;
-        private HashSet<LegacyInfo> _legacyFolders;
-        //private HashSet<LegacyInfo> _legacyFiles;
+        private HashSet<LegacyInfo> _legacyAssets;
         private string _gitRemoteURL;
         private string _tagName;
         private (string remote, string tag) _inferredGitInfo;
@@ -126,11 +125,9 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 
                 dependencies[_rootPackageJson.Name] = remoteUrl;
 
-                var legacyFolders = _legacyFolders.Count == 0 ? null : _legacyFolders.ToDictionary(i => i.Path, i => i.GUID);
-                //var legacyFiles = _legacyFiles.Count == 0 ? null : _legacyFiles.ToDictionary(i => i.Path, i => i.GUID);
-                Dictionary<string, string> legacyFiles = null;
+                var legacyAssets = _legacyAssets.Count == 0 ? null : _legacyAssets.ToDictionary(i => i.Path, i => i.GUID);
 
-                var configJsonObj = new CreatorConfigJson(dependencies, legacyFolders, legacyFiles);
+                var configJsonObj = new CreatorConfigJson(dependencies, legacyAssets);
                 var configJson = JsonConvert.SerializeObject(configJsonObj);
 
                 var created = PackageCreator.CreateUnityPackage(Encoding.UTF8.GetBytes(configJson));
@@ -163,8 +160,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             if (_packageJsonAsset == null)
             {
                 _packages = null;
-                _legacyFolders = null;
-                //_legacyFiles = null;
+                _legacyAssets = null;
                 return;
             }       
             LoadPackageJsonRecursive();
@@ -375,16 +371,14 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             if (_rootPackageJson == null)
             {
                 _packages = null;
-                _legacyFolders = null;
-                //_legacyFiles = null;
+                _legacyAssets = null;
                 return;
             }
 
             var versions = new Dictionary<string, string>();
             var order = new HashSet<string>();
             var packageJsons = new Queue<PackageJson>();
-            var legacyFolders = new HashSet<LegacyInfo>();
-            //var legacyFiles = new HashSet<LegacyInfo>();
+            var legacyAssets = new HashSet<LegacyInfo>();
 
             // will be asked
             packageJsons.Enqueue(_rootPackageJson);
@@ -425,24 +419,21 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 {
                     foreach (var pathGuidPair in srcJson.LegacyFolders)
                     {
-                        legacyFolders.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
+                        legacyAssets.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
                     }
                 }
 
-                /*
                 if (srcJson.LegacyFiles != null)
                 {
                     foreach (var pathGuidPair in srcJson.LegacyFiles)
                     {
-                        legacyFiles.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
+                        legacyAssets.Add(new LegacyInfo(pathGuidPair.Key, pathGuidPair.Value));
                     }
                 }
-                */
             }
 
             _packages = order.Select(id => new PackageInfo(id, versions[id])).ToList();
-            _legacyFolders = legacyFolders;
-            //_legacyFiles = legacyFiles;
+            _legacyAssets = legacyAssets;
         }
 
         private string GetInstalledVersion(string pkgId)
@@ -694,23 +685,17 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         // ReSharper disable once NotAccessedField.Global
         public Dictionary<string, string> Dependencies;
 
-        [JsonProperty("legacyFolders", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonProperty("legacyAssets", NullValueHandling = NullValueHandling.Ignore)]
         // ReSharper disable once NotAccessedField.Global
-        [CanBeNull] public Dictionary<string, string> LegacyFolders;
-
-        [JsonProperty("legacyFiles", NullValueHandling = NullValueHandling.Ignore)]
-        // ReSharper disable once NotAccessedField.Global
-        [CanBeNull] public Dictionary<string, string> LegacyFiles;
+        [CanBeNull] public Dictionary<string, string> LegacyAssets;
 
         public CreatorConfigJson(
             Dictionary<string, string> dependencies,
-            [CanBeNull] Dictionary<string, string> legacyFolders,
-            [CanBeNull] Dictionary<string, string> legacyFiles
+            [CanBeNull] Dictionary<string, string> legacyAssets
         )
         {
             Dependencies = dependencies;
-            LegacyFolders = legacyFolders;
-            LegacyFiles = legacyFiles;
+            LegacyAssets = legacyAssets;
         }
     }
 }

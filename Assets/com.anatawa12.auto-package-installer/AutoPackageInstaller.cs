@@ -107,8 +107,8 @@ namespace Anatawa12.AutoPackageInstaller
                 .ToList();
 
             var removePaths = new List<string>();
-            var legacyFolders = config.Get("legacyFolders", JsonType.Obj);
-            foreach (var key in legacyFolders.Keys)
+            var legacyAssets = config.Get("legacyAssets", JsonType.Obj);
+            foreach (var key in legacyAssets.Keys)
             {
                 var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
                 if (asset != null)
@@ -117,24 +117,7 @@ namespace Anatawa12.AutoPackageInstaller
                 }
                 else
                 {
-                    var guid = legacyFolders.Get(key, JsonType.String);
-                    var path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (!string.IsNullOrEmpty(path))
-                        removePaths.Add(path);
-                }
-            }
-
-            var legacyFiles = config.Get("legacyFiles", JsonType.Obj);
-            foreach (var key in legacyFiles.Keys)
-            {
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
-                if (asset != null)
-                {
-                    removePaths.Add(AssetDatabase.GetAssetPath(asset));
-                }
-                else
-                {
-                    var guid = legacyFiles.Get(key, JsonType.String);
+                    var guid = legacyAssets.Get(key, JsonType.String);
                     var path = AssetDatabase.GUIDToAssetPath(guid);
                     if (!string.IsNullOrEmpty(path))
                         removePaths.Add(path);
