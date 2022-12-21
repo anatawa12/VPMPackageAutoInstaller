@@ -44,7 +44,6 @@ namespace Anatawa12.AutoPackageInstaller
     [InitializeOnLoad]
     public class AutoPackageInstaller
     {
-        private const string TesterGuid = "40f4470be29a43a792b7c41576813ea3";
         private const string ConfigGuid = "9028b92d14f444e2b8c389be130d573f";
         private const string ManifestPath = "Packages/manifest.json";
 
@@ -61,13 +60,10 @@ namespace Anatawa12.AutoPackageInstaller
 
         static AutoPackageInstaller()
         {
-            var testerExist = !string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(TesterGuid));
-            if (testerExist)
-            {
-                Debug.Log("Tester found. skipping auto install & remove self");
-                return;
-            }
-
+#if AUTO_PACKAGE_INSTALLER_DEV_ENV
+            Debug.Log("In dev env. skipping auto install & remove self");
+            return;
+#endif
             DoInstall();
             RemoveSelf();
         }

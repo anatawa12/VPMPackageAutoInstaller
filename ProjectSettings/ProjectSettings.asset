@@ -614,7 +614,8 @@ PlayerSettings:
   webGLLinkerTarget: 1
   webGLThreadsSupport: 0
   webGLWasmStreaming: 0
-  scriptingDefineSymbols: {}
+  scriptingDefineSymbols:
+    1: AUTO_PACKAGE_INSTALLER_DEV_ENV
   platformArchitecture: {}
   scriptingBackend: {}
   il2cppCompilerConfiguration: {}
