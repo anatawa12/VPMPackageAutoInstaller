@@ -1,6 +1,9 @@
 {
-    "name": "com.anatawa12.auto-package-installer.creator",
-    "references": [],
+    "name": "com.anatawa12.vpm-package-auto-installer.tester",
+    "references": [
+        "GUID:f7306773db58a40f2b8c5b6ed99db57b",
+        "GUID:0acc523941302664db1f4e527237feb3"
+    ],
     "includePlatforms": [
         "Editor"
     ],

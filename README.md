@@ -1,4 +1,4 @@
-AutoPackageInstaller
+VPMPackageAutoInstaller
 ===
 
 An experimental project to install unity package published via non-official registry with unitypackage file.
@@ -9,12 +9,12 @@ An experimental project to install unity package published via non-official regi
 
 1. download latest version of installer creator [here][download-creator-latest]
 2. Import the unitypackage to the unity project contains ``package.json``
-3. Open `AutoPackageInstallerCreator` from Window menu
+3. Open `VPMPackageAutoInstallerCreator` from Window menu
 4. Select package.json
 5. If not correct, please set git url & git tag.
 6. Click `Create Installer`
 
-[download-creator-latest]: https://github.com/anatawa12/AutoPackageInstaller/releases/latest/download/installer-creator.unitypackage
+[download-creator-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/installer-creator.unitypackage
 
 ### Other ways
 
@@ -34,24 +34,24 @@ An experimental project to install unity package published via non-official regi
 2. Write config.json
 3. Click `create installer`
 
-[creator-web]: https://anatawa12.github.io/AutoPackageInstaller/
+[creator-web]: https://anatawa12.github.io/VPMPackageAutoInstaller/
 
-[download-creator-js-latest]: https://github.com/anatawa12/AutoPackageInstaller/releases/latest/download/creator.mjs
+[download-creator-js-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/creator.mjs
 
 #### Just create unitypackage
 
 1. Clone or [download][download-this] this project.
-2. Edit config.json at `Assets/com.anatawa12.auto-package-installer/config.json`
+2. Edit config.json at `Assets/com.anatawa12.vpm-package-auto-installer/config.json`
 3. Open this project with Unity (if you did, there's no need to relaunch)
-4. Select `Assets/com.anatawa12.auto-package-installer` in Unity's File view
-5. Left-click on `Assets/com.anatawa12.auto-package-installer` and click `Export Package`
+4. Select `Assets/com.anatawa12.vpm-package-auto-installer` in Unity's File view
+5. Left-click on `Assets/com.anatawa12.vpm-package-auto-installer` and click `Export Package`
 6. un-check `Incliude dependencies` on `Exporting package` dialog.
 7. Click `Export...` and save `.unitypackage` to anywhere you want.
 8. Share `.unitypackage` with user who want to use your package.
 
 </details>
 
-[download-this]: https://github.com/anatawa12/AutoPackageInstaller/archive/refs/heads/master.zip
+[download-this]: https://github.com/anatawa12/VPMPackageAutoInstaller/archive/refs/heads/master.zip
 
 ## Config format
 
@@ -81,4 +81,4 @@ If your package has some dependency packages on git, you should add to dependenc
 This uses `InitializeOnLoad` attribute to run some script on unpacked `unitypackage` and
 on `InitializeOnLoad`, modifies `manifest.json` based on `config.json`. 
 Just after modification, this package deletes files & folders of this project based on `GUID`.
-GUID of C#, `config.json`, and `com.anatawa12.auto-package-installer` are hard-coded.
+GUID of C#, `config.json`, and `com.anatawa12.vpm-package-auto-installer` are hard-coded.

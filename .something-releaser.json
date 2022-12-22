@@ -2,7 +2,7 @@
   "releaseChanger": [
     {
      "changer": "npm",
-     "path": "Packages/com.anatawa12.auto-package-installer.creator/package.json"
+     "path": "Packages/com.anatawa12.vpm-package-auto-installer.creator/package.json"
     },
     {
       "changer": "regex-pattern",

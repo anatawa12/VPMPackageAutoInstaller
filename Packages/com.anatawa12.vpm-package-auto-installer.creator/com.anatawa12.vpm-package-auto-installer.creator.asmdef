@@ -1,13 +1,15 @@
 {
-    "name": "com.anatawa12.auto-package-installer",
+    "name": "com.anatawa12.vpm-package-auto-installer.creator",
     "references": [],
     "includePlatforms": [
         "Editor"
     ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Newtonsoft.Json.dll"
+    ],
     "autoReferenced": false,
     "defineConstraints": [],
     "versionDefines": [],

@@ -18,11 +18,11 @@ jobs:
           VERSION="$(version-unsnapshot "$VERSION")"
           set-version "$VERSION"
 
-          CREATOR_PKG_ROOT="Packages/com.anatawa12.auto-package-installer.creator"
+          CREATOR_PKG_ROOT="Packages/com.anatawa12.vpm-package-auto-installer.creator"
 
           # create installer unitypackage
           python3 building/build-unitypackage.py installer-template.unitypackage \
-            Assets/com.anatawa12.auto-package-installer
+            Assets/com.anatawa12.vpm-package-auto-installer
 
           # add to creator unity package
           cp installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
@@ -49,11 +49,7 @@ jobs:
 
           # create creator installer unity package
           export USE_LOCAL_PREBUILT=1
-          cp building/config.json building/config.json.bak
-          sed "s/%%%TAG_NAME%%%/$TAG/" < building/config.json.bak > building/config.json
           node creator/creator.mjs building/config.json installer-creator.unitypackage
-          rm building/config.json
-          mv building/config.json.bak building/config.json
 
           # upload release assets
           gh release create "$TAG" \
@@ -72,7 +68,7 @@ jobs:
           VERSION="$(get-version)"
           VERSION="$(version-next "$VERSION")"
           set-version "$(version-snapshot "$VERSION")"
-          CREATOR_PKG_ROOT="Packages/com.anatawa12.auto-package-installer.creator"
+          CREATOR_PKG_ROOT="Packages/com.anatawa12.vpm-package-auto-installer.creator"
           git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
           git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
           git add "$CREATOR_PKG_ROOT/package.json"
