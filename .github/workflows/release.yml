@@ -49,11 +49,7 @@ jobs:
 
           # create creator installer unity package
           export USE_LOCAL_PREBUILT=1
-          cp building/config.json building/config.json.bak
-          sed "s/%%%TAG_NAME%%%/$TAG/" < building/config.json.bak > building/config.json
           node creator/creator.mjs building/config.json installer-creator.unitypackage
-          rm building/config.json
-          mv building/config.json.bak building/config.json
 
           # upload release assets
           gh release create "$TAG" \
