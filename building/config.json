@@ -1,5 +1,8 @@
 {
-  "dependencies": {
+  "vpmRepositories": [
+    "vpm.anatawa12.com/vpm.json",
+  ],
+  "vpmDependencies": {
     "com.anatawa12.vpm-package-auto-installer.creator": "^0.2.0"
   }
 }
