@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.anatawa12.auto-package-installer.creator": {
+    "com.anatawa12.vpm-package-auto-installer.creator": {
       "version": "file:com.anatawa12.auto-package-installer.creator",
       "depth": 0,
       "source": "embedded",

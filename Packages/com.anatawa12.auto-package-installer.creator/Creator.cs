@@ -10,14 +10,14 @@ using UnityEditor;
 using UnityEngine;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
-namespace Anatawa12.AutoPackageInstaller.Creator
+namespace Anatawa12.VpmPackageAutoInstaller.Creator
 {
-    public class AutoPackageInstallerCreator : EditorWindow
+    public class VpmPackageAutoInstallerCreator : EditorWindow
     {
-        [MenuItem("Window/AutoPackageInstallerCreator")]
+        [MenuItem("Window/VPMPackageAutoInstallerCreator")]
         public static void OpenGui()
         {
-            GetWindow<AutoPackageInstallerCreator>();
+            GetWindow<VpmPackageAutoInstallerCreator>();
         }
 
         private Action _onProjectChange;
@@ -38,7 +38,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("AutoPackageInstaller Creator");
+            EditorGUILayout.LabelField("VPMPackageAutoInstaller Creator");
 
             var old = _packageJsonAsset;
             _packageJsonAsset =
@@ -107,12 +107,12 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             catch (Exception e)
             {
                 Debug.LogError("ERROR creating installer. " +
-                               "Please report me at https://github.com/anatawa12/AutoPackageInstaller/issues/new " +
+                               "Please report me at https://github.com/anatawa12/VPMPackageAutoInstaller/issues/new " +
                                "with the next error message.");
                 Debug.LogError(e);
                 EditorUtility.DisplayDialog("ERROR",
                     "Internal Error occurred.\n" +
-                    "If Possible, please report me at https://github.com/anatawa12/AutoPackageInstaller/issues/new " +
+                    "If Possible, please report me at https://github.com/anatawa12/VPMPackageAutoInstaller/issues/new " +
                     "with error message on console.\n" +
                     "(there also be the link to report on error console.)", "OK");
             }

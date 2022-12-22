@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: DefaultCompany
-  productName: AutoPackageInstaller
+  productName: VPMPackageAutoInstaller
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -615,7 +615,7 @@ PlayerSettings:
   webGLThreadsSupport: 0
   webGLWasmStreaming: 0
   scriptingDefineSymbols:
-    1: AUTO_PACKAGE_INSTALLER_DEV_ENV
+    1: VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
   platformArchitecture: {}
   scriptingBackend: {}
   il2cppCompilerConfiguration: {}

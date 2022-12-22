@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace Anatawa12.AutoPackageInstaller
+namespace Anatawa12.VpmPackageAutoInstaller
 {
     public class InstallerTester : EditorWindow
     {
@@ -18,9 +18,9 @@ namespace Anatawa12.AutoPackageInstaller
         private void OnGUI()
         {
             if (GUILayout.Button("Run Installer"))
-                AutoPackageInstaller.DoInstall();
+                VpmPackageAutoInstaller.DoInstall();
             if (GUILayout.Button("Remove Installer"))
-                AutoPackageInstaller.RemoveSelf();
+                VpmPackageAutoInstaller.RemoveSelf();
             _repoURL = GUILayout.TextField(_repoURL);
             if (GUILayout.Button("Add Repository"))
                 using (var setting = VpmGlobalSetting.Load())

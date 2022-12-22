@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AutoPackageInstaller Creator
+ * VPMPackageAutoInstaller Creator
  *
  * How To Use:
  * A) use node.js
@@ -165,7 +165,7 @@ if (typeof Deno != "undefined") {
     else
       await Deno.permissions.request({name: "net", host: templateUrl.host});
   } else {
-    templateUrl = `https://github.com/anatawa12/AutoPackageInstaller/`
+    templateUrl = `https://github.com/anatawa12/VPMPackageAutoInstaller/`
       + `releases/download/v${INSTALLER_VERSION}/installer-template.unitypackage`
     await Deno.permissions.request({name: "net", host: 'github.com'});
   }
@@ -204,7 +204,7 @@ if (typeof Deno != "undefined") {
     const path = url.fileURLToPath(new URL("../installer-template.unitypackage", import.meta.url))
     template = await fs.readFile(path);
   } else {
-    let url = `https://github.com/anatawa12/AutoPackageInstaller/`
+    let url = `https://github.com/anatawa12/VPMPackageAutoInstaller/`
       + `releases/download/v${INSTALLER_VERSION}/installer-template.unitypackage`;
     while (true) {
       const res = await new Promise(resolve => https.get(url, (res) => resolve(res)));

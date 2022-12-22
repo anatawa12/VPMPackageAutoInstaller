@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
 
-namespace Anatawa12.AutoPackageInstaller
+namespace Anatawa12.VpmPackageAutoInstaller
 {
     public class VersionTest
     {

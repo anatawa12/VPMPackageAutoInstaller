@@ -1,5 +1,5 @@
 ﻿/*
- * This is a part of https://github.com/anatawa12/AutoPackageInstaller.
+ * This is a part of https://github.com/anatawa12/VPMPackageAutoInstaller.
  * 
  * MIT License
  * 
@@ -37,12 +37,12 @@ using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
-[assembly: InternalsVisibleTo("com.anatawa12.auto-package-installer.tester")]
+[assembly: InternalsVisibleTo("com.anatawa12.vpm-package-auto-installer.tester")]
 
-namespace Anatawa12.AutoPackageInstaller
+namespace Anatawa12.VpmPackageAutoInstaller
 {
     [InitializeOnLoad]
-    public static class AutoPackageInstaller
+    public static class VpmPackageAutoInstaller
     {
         private const string ConfigGuid = "9028b92d14f444e2b8c389be130d573f";
 
@@ -57,12 +57,13 @@ namespace Anatawa12.AutoPackageInstaller
             "4b344df74d4849e3b2c978b959abd31b",
         };
 
-        static AutoPackageInstaller()
+        static VpmPackageAutoInstaller()
         {
-#if AUTO_PACKAGE_INSTALLER_DEV_ENV
+#if VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
             Debug.Log("In dev env. skipping auto install & remove self");
             return;
 #endif
+            return; // for safety temporal
             try
             {
                 DoInstall();
