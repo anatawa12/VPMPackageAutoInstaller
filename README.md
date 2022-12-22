@@ -56,8 +56,8 @@ An experimental project to install [vpm] package published in non-official regis
 
 ## Config format
 
-```json5
-// in the confi file, comment is not supported but for documentation, comment is used here.
+```json
+// in the config file, comment is not supported but for documentation, comment is used here.
 {
   // list of vpm repositories to be added
   // You should list up required vpm repositories for vpmDependencies and their vpmDependencies
@@ -67,7 +67,8 @@ An experimental project to install [vpm] package published in non-official regis
   ],
   // List of dependencies to be added. Non-vpm dependencies are not supported.
   "vpmDependencies": {
-    "com.anatawa12.custom-localization-for-editor-extension": "0.2.0"
+    // you may use 'x.y.z', '^x.y.z', or '~x.y.z'
+    "com.anatawa12.custom-localization-for-editor-extension": "^0.2.0"
   }
 }
 ```
