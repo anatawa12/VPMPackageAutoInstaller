@@ -82,5 +82,5 @@ crashlytics-build.properties
 /Packages/*
 !/Packages/manifest.json
 !/Packages/packages-lock.json
-!/Packages/com.anatawa12.auto-package-installer.creator
+!/Packages/com.anatawa12.vpm-package-auto-installer.creator
 !/Packages/.gitignore
