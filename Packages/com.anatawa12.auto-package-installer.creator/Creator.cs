@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -34,11 +33,8 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         }
 
         private bool _shouldReload;
-        private TextAsset _packageJsonAsset;
-        private PackageJson _rootPackageJson;
-        private ManifestJson _manifestJson;
-        private List<PackageInfo> _packages;
-        private HashSet<LegacyInfo> _legacyAssets;
+        [CanBeNull] private TextAsset _packageJsonAsset;
+        [CanBeNull] private LoadedPackageInfo _loaded;
 
         private void OnGUI()
         {
@@ -51,7 +47,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                 LoadPackageInfos();
             _shouldReload = false;
 
-            if (_legacyAssets != null)
+            if (_loaded != null)
             {
                 // TODO: allow creator to choose from ~, ^ and specific version descriptor.
                 //var tag = EditorGUILayout.TextField("git tag", _tagName ?? _inferredGitInfo.tag ?? "");
@@ -60,7 +56,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 
                 if (GUILayout.Button("Create Installer"))
                 {
-                    CreateInstaller();
+                    CreateInstaller(_loaded);
                 }
             }
             else
@@ -72,21 +68,22 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             }
         }
 
-        private void CreateInstaller()
+        private static void CreateInstaller([NotNull] LoadedPackageInfo loaded)
         {
             try
             {
                 var path = EditorUtility.SaveFilePanel("Create Installer...",
                     "",
-                    (_rootPackageJson.DisplayName ?? _rootPackageJson.Name) + "-installer.unitypackage",
+                    (loaded.RootPackageJson.DisplayName ?? loaded.RootPackageJson.Name) + "-installer.unitypackage",
                     "unitypackage");
                 if (string.IsNullOrEmpty(path)) return;
 
-                var dependencies = new Dictionary<string, string>();
+                var dependencies = new Dictionary<string, string>
+                {
+                    [loaded.RootPackageJson.Name] = loaded.RootPackageJson.Version
+                };
 
-                dependencies[_rootPackageJson.Name] = _rootPackageJson.Version;
-
-                var legacyAssets = _legacyAssets.Count == 0 ? null : _legacyAssets.ToDictionary(i => i.Path, i => i.GUID);
+                var legacyAssets = loaded.LegacyAssets.Count == 0 ? null : loaded.LegacyAssets.ToDictionary(i => i.Path, i => i.GUID);
 
                 var configJsonObj = new CreatorConfigJson(dependencies, legacyAssets);
                 var configJson = JsonConvert.SerializeObject(configJsonObj);
@@ -120,23 +117,19 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         {
             if (_packageJsonAsset == null)
             {
-                _packages = null;
-                _legacyAssets = null;
+                _loaded = null;
                 return;
             }       
-            LoadPackageJsonRecursive();
-            if (_legacyAssets == null) return;
+            _loaded = LoadPackageJsonRecursive(_packageJsonAsset);
         }
 
 
-        private void LoadPackageJsonRecursive()
+        private static LoadedPackageInfo LoadPackageJsonRecursive([NotNull] TextAsset packageJsonAsset)
         {
-            _rootPackageJson = LoadPackageJson(_packageJsonAsset);
-            if (_rootPackageJson == null)
+            var rootPackageJson = LoadPackageJson(packageJsonAsset);
+            if (rootPackageJson == null)
             {
-                _packages = null;
-                _legacyAssets = null;
-                return;
+                return null;
             }
 
             var versions = new Dictionary<string, PackageInfo>();
@@ -144,7 +137,7 @@ namespace Anatawa12.AutoPackageInstaller.Creator
             var legacyAssets = new HashSet<LegacyInfo>();
 
             // will be asked
-            packageJsons.Enqueue(_rootPackageJson);
+            packageJsons.Enqueue(rootPackageJson);
 
             while (packageJsons.Count != 0)
             {
@@ -172,12 +165,14 @@ namespace Anatawa12.AutoPackageInstaller.Creator
                     legacyAssets.Add(info);
             }
 
-            _packages = versions.Values.ToList();
-            _legacyAssets = legacyAssets;
+            return new LoadedPackageInfo(
+                rootPackageJson: rootPackageJson,
+                packages: versions.Values.ToList(),
+                legacyAssets: legacyAssets);
         }
 
         [CanBeNull]
-        private PackageJson LoadPackageJson([NotNull] TextAsset asset)
+        private static PackageJson LoadPackageJson([NotNull] TextAsset asset)
         {
             try
             {
@@ -193,6 +188,20 @@ namespace Anatawa12.AutoPackageInstaller.Creator
         }
 #endregion get / infer manifest info
 
+    }
+
+    internal class LoadedPackageInfo
+    {
+        public readonly PackageJson RootPackageJson;
+        public readonly List<PackageInfo> Packages;
+        public readonly HashSet<LegacyInfo> LegacyAssets;
+
+        public LoadedPackageInfo(PackageJson rootPackageJson, List<PackageInfo> packages, HashSet<LegacyInfo> legacyAssets)
+        {
+            RootPackageJson = rootPackageJson;
+            Packages = packages;
+            LegacyAssets = legacyAssets;
+        }
     }
 
     internal static class PackageCreator
@@ -357,14 +366,6 @@ namespace Anatawa12.AutoPackageInstaller.Creator
 
         [JsonProperty("legacyFiles"), CanBeNull]
         public Dictionary<string, string> LegacyFiles;
-    }
-
-    // ReSharper disable once ClassNeverInstantiated.Global
-    internal class ManifestJson
-    {
-        [JsonProperty("dependencies")]
-        // ReSharper disable once CollectionNeverUpdated.Global
-        public Dictionary<string, string> Dependencies;
     }
 #pragma warning restore CS0649
 
