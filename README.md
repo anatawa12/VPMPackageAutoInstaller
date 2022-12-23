@@ -1,7 +1,9 @@
 VPMPackageAutoInstaller
 ===
 
-An experimental project to install unity package published via non-official registry with unitypackage file.
+An experimental project to install [vpm] package published in non-official registry with unitypackage file.
+
+[vpm]: https://vcc.docs.vrchat.com/vpm/packages
 
 ## How to use
 
@@ -11,8 +13,7 @@ An experimental project to install unity package published via non-official regi
 2. Import the unitypackage to the unity project contains ``package.json``
 3. Open `VPMPackageAutoInstallerCreator` from Window menu
 4. Select package.json
-5. If not correct, please set git url & git tag.
-6. Click `Create Installer`
+5. Click `Create Installer`
 
 [download-creator-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/installer-creator.unitypackage
 
@@ -55,30 +56,26 @@ An experimental project to install unity package published via non-official regi
 
 ## Config format
 
-The format of `config.json` is almost same as [`manifest.json`][manifest-json-unity] but 
-only `dependencies` tag is supported.
-
-[manifest-json-unity]: https://docs.unity3d.com/current/Manual/upm-manifestPrj.html
-
-### Example
-
-This example shows installer package for <https://github.com/anatawa12/VRC-Unity-extension>.
-Please replace `https://github.com/anatawa12/VRC-Unity-extension.git` and `com.anatawa12.editor-extension`
-with your git repository and package name.
-If your package has some dependency packages on git, you should add to dependencies block.
-
 ```json
+// in the config file, comment is not supported but for documentation, comment is used here.
 {
-  "dependencies": {
-    "com.anatawa12.editor-extension": "https://github.com/anatawa12/VRC-Unity-extension.git"
+  // list of vpm repositories to be added
+  // You should list up required vpm repositories for vpmDependencies and their vpmDependencies
+  // NOTICE: You should not include vrchat official or curated repositories
+  "vpmRepositories": [
+    "https://vpm.anatawa12.com/vpm.json"
+  ],
+  // List of dependencies to be added. Non-vpm dependencies are not supported.
+  "vpmDependencies": {
+    // you may use 'x.y.z', '^x.y.z', or '~x.y.z'
+    "com.anatawa12.custom-localization-for-editor-extension": "^0.2.0"
   }
 }
-
 ```
 
 ## How this works
 
 This uses `InitializeOnLoad` attribute to run some script on unpacked `unitypackage` and
-on `InitializeOnLoad`, modifies `manifest.json` based on `config.json`. 
+on `InitializeOnLoad`, modifies `vpm-manifest.json` based on `config.json` and trigger VPM. 
 Just after modification, this package deletes files & folders of this project based on `GUID`.
 GUID of C#, `config.json`, and `com.anatawa12.vpm-package-auto-installer` are hard-coded.

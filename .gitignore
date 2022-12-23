@@ -84,3 +84,6 @@ crashlytics-build.properties
 !/Packages/packages-lock.json
 !/Packages/com.anatawa12.vpm-package-auto-installer.creator
 !/Packages/.gitignore
+
+# for github actions temp dir
+/build/
