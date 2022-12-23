@@ -201,7 +201,7 @@ if (typeof Deno != "undefined") {
 
   let template;
   if (INSTALLER_VERSION.endsWith("-SNAPSHOT") || Number(process.env.USE_LOCAL_PREBUILT)) {
-    const path = url.fileURLToPath(new URL("../installer-template.unitypackage", import.meta.url))
+    const path = url.fileURLToPath(new URL("../build/installer-template.unitypackage", import.meta.url))
     template = await fs.readFile(path);
   } else {
     let url = `https://github.com/anatawa12/VPMPackageAutoInstaller/`
