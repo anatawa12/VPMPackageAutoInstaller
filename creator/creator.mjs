@@ -144,7 +144,7 @@ function saveOctal(buf, offset, len, value, octalLen = 0) {
   }
 }
 
-let INSTALLER_VERSION = "0.2.1";
+let INSTALLER_VERSION = "0.2.2-SNAPSHOT";
 
 if (typeof Deno != "undefined") {
   //console.info("deno detected");
