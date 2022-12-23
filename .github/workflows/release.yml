@@ -1,80 +1,109 @@
 on:
   workflow_dispatch: {}
 
+environments:
+  vpm.anatawa12.com: VPM_GITHUB_PAT
+
+env:
+  CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
+  PKG_NAME: com.anatawa12.vpm-package-auto-installer.creator
+
 jobs:
   create_release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: anatawa12/something-releaser@v2
-      - name: release
+      - uses: snow-actions/git-config-user@v1.0.0
+      - name: Check version is Snapshot
         run: |
-          set-git-user "anatawa12-bot"
-          VERSION="$(get-version)"
-          if ! [[ "$VERSION" = *-SNAPSHOT ]]; then
+          if ! [[ "$(get-version)" = *-SNAPSHOT ]]; then
             echo 'VERSION IS NOT SNAPSHOT' >&2
             exit 1
           fi
-          VERSION="$(version-unsnapshot "$VERSION")"
-          set-version "$VERSION"
 
-          CREATOR_PKG_ROOT="Packages/com.anatawa12.vpm-package-auto-installer.creator"
+      - name: Update Version Name
+        run: set-version "$(version-unsnapshot "$(get-version)")"
 
-          # create installer unitypackage
-          python3 building/build-unitypackage.py installer-template.unitypackage \
-            Assets/com.anatawa12.vpm-package-auto-installer
-
-          # add to creator unity package
-          cp installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
-          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
-          cp "building/installer-template.unitypackage.bytes.meta" "$CREATOR_PKG_ROOT/"
-          git add -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
-
-          # git add to commit version name changes
-          git add "$CREATOR_PKG_ROOT/package.json"
-          git add "creator/creator.mjs"
-
-          git commit -m "$VERSION"
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-
-      - name: create package and publish release
-        id: mk-pkg
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - name: Commit & tag version
         run: |
           VERSION="$(get-version)"
-          TAG="v$VERSION"
+          git commit -am "$VERSION"
+          git tag "v$VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Prepare build folder
+        run: mkdir build
+
+      - name: Create Template unitypackage
+        uses: anatawa12/sh-actions/create-unitypackage@master
+        with:
+          output-path: build/installer-template.unitypackage
+          package-path: Assets/com.anatawa12.vpm-package-auto-installer
+
+      - name: Build VPM release
+        run: |
+          # add to creator unity package
+          cp build/installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
+          cp "building/installer-template.unitypackage.bytes.meta" "$CREATOR_PKG_ROOT/"
+          # create zip file
+          pushd "$CREATOR_PKG_ROOT"
+            zip -r "../../build/$PKG_NAME-$VERSION.zip" .
+          popd
+
+      - name: Create Installer unitypackage
+        id: mk-pkg
+        shell: bash
+        run: |
           # create creator installer unity package
           export USE_LOCAL_PREBUILT=1
-          node creator/creator.mjs building/config.json installer-creator.unitypackage
-
-          # upload release assets
-          gh release create "$TAG" \
-            "installer-creator.unitypackage" \
-            "installer-template.unitypackage" \
-            "creator/creator.mjs" \
+          node creator/creator.mjs building/config.json build/installer-creator.unitypackage
 
           tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
-          cp installer-template.unitypackage "$tmp/"
+          cp build/installer-template.unitypackage "$tmp/"
           cp creator/index.html "$tmp/"
           cp creator/creator.mjs "$tmp/"
           gh-set-output "tmp" "$tmp"
 
+      - name: Publish Release
+        run: |
+          git push && git push origin "v$VERSION"
+
+      - name: publish release to github
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          sleep 1
+          # upload release assets
+          gh release create "v$VERSION" \
+            "build/installer-creator.unitypackage" \
+            "build/installer-template.unitypackage" \
+            "build/$PKG_NAME-$VERSION.zip" \
+            "$CREATOR_PKG_ROOT/package.json" \
+            "creator/creator.mjs" \
+
       - name: prepare next release & push
         run: |
-          VERSION="$(get-version)"
-          VERSION="$(version-next "$VERSION")"
+          VERSION="$(version-next "$(get-version)")"
           set-version "$(version-snapshot "$VERSION")"
-          CREATOR_PKG_ROOT="Packages/com.anatawa12.vpm-package-auto-installer.creator"
-          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
-          git rm -f "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes.meta"
-          git add "$CREATOR_PKG_ROOT/package.json"
-          git add "creator/creator.mjs"
-          git commit -m "prepare for next version: $VERSION"
+          git commit -am "prepare for next version: $VERSION"
           git push && git push --tags
+
+      - name: Prepare Dispatch payload
+        run: |
+          echo "PAYLOAD=$(echo "{}" | jq -c \
+              --arg REPO "$GITHUB_REPOSITORY" \
+              --arg VERSION "$VERSION" \
+              '.repository=$REPO | .version=$VERSION')" \
+            >> "$GITHUB_ENV"
+      - name: Dispatch vpm repo update
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.VPM_GITHUB_PAT }}
+          repository: anatawa12/vpm.anatawa12.com
+          event-type: update-package
+          client-payload: ${{ env.PAYLOAD }}
 
       - name: remove repo
         run: rm -rf * .* || true
