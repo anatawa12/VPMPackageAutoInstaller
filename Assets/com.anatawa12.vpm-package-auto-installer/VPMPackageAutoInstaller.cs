@@ -63,7 +63,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
             Debug.Log("In dev env. skipping auto install & remove self");
             return;
 #endif
-            return; // for safety temporal
             try
             {
                 DoInstall();
