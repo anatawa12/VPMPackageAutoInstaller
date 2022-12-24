@@ -165,7 +165,7 @@ jobs:
       - uses: snow-actions/git-config-user@v1.0.0
       - uses: actions/download-artifact@v3
         with:
-          name: my-artifact
+          name: pages-artifact
       - name: publish github pages
         shell: bash
         run: |
