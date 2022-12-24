@@ -48,10 +48,15 @@ namespace Anatawa12.VpmPackageAutoInstaller
         private static readonly string[] ToBeRemoved =
         {
             ConfigGuid,
+#if UNITY_5_3_OR_NEWER
             // the C# file
             "30732659753784f469c8c521aa469152",
             // the asmdef file
             "f7306773db58a40f2b8c5b6ed99db57b",
+#else
+            // the dll file
+            "93e23fe9bbc86463a9790ebfd1fef5eb"
+#endif
             // the folder
             "4b344df74d4849e3b2c978b959abd31b",
         };
