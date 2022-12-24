@@ -59,10 +59,12 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         static VpmPackageAutoInstaller()
         {
-#if VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
-            Debug.Log("In dev env. skipping auto install & remove self");
-            return;
-#endif
+            if (IsDevEnv())
+            {
+                Debug.Log("In dev env. skipping auto install & remove self");
+                return;
+            }
+
             try
             {
                 DoInstall();
@@ -73,6 +75,12 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
             }
             RemoveSelf();
+        }
+
+        private static bool IsDevEnv() {
+            var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
+            return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
+                .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
 
         public static void DoInstall()
