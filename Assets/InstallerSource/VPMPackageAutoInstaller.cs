@@ -63,7 +63,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         static VpmPackageAutoInstaller()
         {
-            #if UNITY_5_3_OR_NEWER
+            #if UNITY_5_3_OR_NEWER && VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
             Debug.Log("Unity Compilation Env. Skipping. You should see actual run from compiled dll");
             #else
             if (IsDevEnv())
