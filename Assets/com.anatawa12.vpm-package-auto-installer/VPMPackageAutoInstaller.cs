@@ -33,7 +33,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -699,7 +698,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     sealed class JsonObj : IEnumerable<(string, object)>
     {
-        [NotNull] internal readonly List<(string, object)> Obj = new List<(string, object)>();
+        internal readonly List<(string, object)> Obj = new List<(string, object)>();
 
         public JsonObj()
         {
