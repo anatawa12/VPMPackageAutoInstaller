@@ -33,7 +33,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -59,10 +58,15 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         static VpmPackageAutoInstaller()
         {
-#if VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
-            Debug.Log("In dev env. skipping auto install & remove self");
-            return;
-#endif
+            #if UNITY_5_3_OR_NEWER
+            Debug.Log("Unity Compilation Env. Skipping. You should see actual run from compiled dll");
+            #else
+            if (IsDevEnv())
+            {
+                Debug.Log("In dev env. skipping auto install & remove self");
+                return;
+            }
+
             try
             {
                 DoInstall();
@@ -73,6 +77,15 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
             }
             RemoveSelf();
+            #endif
+        }
+
+        private static bool IsDevEnv()
+        {
+            BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
+            BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
+            return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
+                .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
 
         public static void DoInstall()
@@ -691,7 +704,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     sealed class JsonObj : IEnumerable<(string, object)>
     {
-        [NotNull] internal readonly List<(string, object)> Obj = new List<(string, object)>();
+        internal readonly List<(string, object)> Obj = new List<(string, object)>();
 
         public JsonObj()
         {

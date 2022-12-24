@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+        <EnableDefaultItems>false</EnableDefaultItems>
+        <RootNamespace>UnityEngine.CoreModule</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include=".\UnityEngine.cs" />
+    </ItemGroup>
+</Project>
