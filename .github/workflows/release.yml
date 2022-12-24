@@ -1,16 +1,22 @@
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "True to publish release to git, vpm. if false, this creates release asset only"
+        type: boolean
+        required: false
 
 env:
   CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
   PKG_NAME: com.anatawa12.vpm-package-auto-installer.creator
 
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
 jobs:
-  create_release:
+  create-release:
     runs-on: ubuntu-latest
-    environment:
-      name: vpm.anatawa12.com
-      url: https://vpm.anatawa12.com/
     steps:
       - uses: actions/checkout@v3
       - uses: anatawa12/something-releaser@v2
@@ -23,14 +29,15 @@ jobs:
           fi
 
       - name: Update Version Name
-        run: set-version "$(version-unsnapshot "$(get-version)")"
+        run: |
+          set-version "$(version-unsnapshot "$(get-version)")"
+          echo "VERSION=$(get-version)" >> $GITHUB_ENV
 
       - name: Commit & tag version
+        if: ${{ inputs.publish }}
         run: |
-          VERSION="$(get-version)"
           git commit -am "$VERSION"
           git tag "v$VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Prepare build folder
         run: mkdir build
@@ -44,6 +51,11 @@ jobs:
           output-path: build/installer-template.unitypackage
           package-path: Assets/com.anatawa12.vpm-package-auto-installer
 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: installer-template
+          path: build/installer-template.unitypackage
+
       - name: Build VPM release
         run: |
           # add to creator unity package
@@ -54,6 +66,11 @@ jobs:
             zip -r "../../build/$PKG_NAME-$VERSION.zip" .
           popd
 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: vpm-package
+          path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
+
       - name: Create Installer unitypackage
         id: mk-pkg
         shell: bash
@@ -62,17 +79,33 @@ jobs:
           export USE_LOCAL_PREBUILT=1
           node creator/creator.mjs building/config.json build/installer-creator.unitypackage
 
-          tmp="$(mktemp -dt "$(basename $0).$$.XXXXXX")"
-          cp build/installer-template.unitypackage "$tmp/"
-          cp creator/index.html "$tmp/"
-          cp creator/creator.mjs "$tmp/"
-          gh-set-output "tmp" "$tmp"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: installer-creator
+          path: build/installer-creator.unitypackage
 
       - name: Publish Release
+        if: ${{ inputs.publish }}
         run: |
           git push && git push origin "v$VERSION"
 
+      - name: Create Pages folder
+        id: mk-pkg
+        shell: bash
+        run: |
+          tmp="build/pages"
+          mkdir "$tmp"
+          cp build/installer-template.unitypackage "$tmp/"
+          cp creator/index.html "$tmp/"
+          cp creator/creator.mjs "$tmp/"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: pages-artifact
+          path: build/pages/
+
       - name: publish release to github
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -87,12 +120,24 @@ jobs:
             "creator/creator.mjs" \
 
       - name: prepare next release & push
+        if: ${{ inputs.publish }}
         run: |
           VERSION="$(version-next "$(get-version)")"
           set-version "$(version-snapshot "$VERSION")"
           git commit -am "prepare for next version: $VERSION"
           git push && git push --tags
 
+  publish-vpm:
+    runs-on: ubuntu-latest
+    if: inputs.publish
+    needs: create-release
+    environment:
+      name: vpm.anatawa12.com
+      url: https://vpm.anatawa12.com/
+    steps:
+      - uses: actions/checkout@v3
+      - uses: anatawa12/something-releaser@v2
+      - uses: snow-actions/git-config-user@v1.0.0
       - name: Prepare Dispatch payload
         run: |
           echo "PAYLOAD=$(echo "{}" | jq -c \
@@ -108,20 +153,24 @@ jobs:
           event-type: update-package
           client-payload: ${{ env.PAYLOAD }}
 
-      - name: remove repo
-        run: rm -rf * .* || true
-
+  publish-pages:
+    runs-on: ubuntu-latest
+    if: inputs.publish
+    needs: create-release
+    environment:
+      name: vpm.anatawa12.com
+      url: https://vpm.anatawa12.com/
+    steps:
       - uses: actions/checkout@v3
         with:
           ref: gh-pages
       - uses: snow-actions/git-config-user@v1.0.0
+      - uses: actions/download-artifact@v3
+        with:
+          name: my-artifact
       - name: publish github pages
-        env:
-          GH_TOKEN: ${{ github.token }}
-          tmp: ${{ steps.mk-pkg.outputs.tmp }}
         shell: bash
         run: |
-          cp "$tmp/"* .
           git add .
           git commit -m "update"
           git push
