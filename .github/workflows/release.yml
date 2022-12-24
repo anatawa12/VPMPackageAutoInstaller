@@ -5,6 +5,10 @@ on:
         description: "True to publish release to git, vpm. if false, this creates release asset only"
         type: boolean
         required: false
+      publish-page:
+        description: "True to Publish page even if publish is false"
+        type: boolean
+        required: false
 
 env:
   CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
@@ -159,11 +163,8 @@ jobs:
 
   publish-pages:
     runs-on: ubuntu-latest
-    if: inputs.publish
+    if: inputs.publish || inputs.publish-page
     needs: create-release
-    environment:
-      name: vpm.anatawa12.com
-      url: https://vpm.anatawa12.com/
     steps:
       - uses: actions/checkout@v3
         with:
