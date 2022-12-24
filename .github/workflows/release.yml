@@ -35,6 +35,9 @@ jobs:
       - name: Prepare build folder
         run: mkdir build
 
+      - name: Build Installer dll
+        run: ./Assets/InstallerSource/DllBuild~/build-and-copy.sh
+
       - name: Create Template unitypackage
         uses: anatawa12/sh-actions/create-unitypackage@master
         with:
