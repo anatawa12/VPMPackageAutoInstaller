@@ -76,8 +76,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             RemoveSelf();
         }
 
-        private static bool IsDevEnv() {
-            var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
+        private static bool IsDevEnv()
+        {
+            BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
+            BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
             return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
