@@ -72,7 +72,6 @@ jobs:
           path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
 
       - name: Create Installer unitypackage
-        id: mk-pkg
         shell: bash
         run: |
           # create creator installer unity package
@@ -90,7 +89,6 @@ jobs:
           git push && git push origin "v$VERSION"
 
       - name: Create Pages folder
-        id: mk-pkg
         shell: bash
         run: |
           tmp="build/pages"
