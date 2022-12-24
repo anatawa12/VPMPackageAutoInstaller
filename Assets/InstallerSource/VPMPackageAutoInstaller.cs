@@ -93,6 +93,14 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
 
+        private static bool IsNoPrompt()
+        {
+            BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
+            BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
+            return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
+                .Contains("VPM_PACKAGE_AUTO_INSTALLER_NO_PROMPT");
+        }
+
         public static void DoInstall()
         {
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
@@ -154,7 +162,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 confirmMessage += string.Join("\n", removePaths);
             }
 
-            if (!EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
+            if (!IsNoPrompt() && !EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
                 return;
 
             foreach (var repo in vpmRepos)
