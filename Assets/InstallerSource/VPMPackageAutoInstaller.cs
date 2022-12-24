@@ -132,6 +132,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     select (package, version))
                 .ToList();
 
+            if (updates.Count == 0)
+            {
+                if (!IsNoPrompt())
+                    EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
+                return;
+            }
+
             var removePaths = new List<string>();
             var legacyAssets = config.Get("legacyAssets", JsonType.Obj, true);
             if (legacyAssets != null)
