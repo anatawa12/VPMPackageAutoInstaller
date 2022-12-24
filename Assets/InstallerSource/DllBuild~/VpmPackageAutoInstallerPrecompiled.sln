@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VPMPackageAutoInstaller", "VPMPackageAutoInstaller.csproj", "{15641F29-1985-47DB-BE22-36A1CC59FFA0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityEditor", "UnityEditor.csproj", "{6C865695-9C05-46D5-9833-A4230F808C13}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityEngine", "UnityEngine.csproj", "{61EDBCBE-A5C9-44E6-97AF-7632A74C5D87}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{15641F29-1985-47DB-BE22-36A1CC59FFA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15641F29-1985-47DB-BE22-36A1CC59FFA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15641F29-1985-47DB-BE22-36A1CC59FFA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15641F29-1985-47DB-BE22-36A1CC59FFA0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C865695-9C05-46D5-9833-A4230F808C13}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C865695-9C05-46D5-9833-A4230F808C13}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C865695-9C05-46D5-9833-A4230F808C13}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C865695-9C05-46D5-9833-A4230F808C13}.Release|Any CPU.Build.0 = Release|Any CPU
+		{61EDBCBE-A5C9-44E6-97AF-7632A74C5D87}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{61EDBCBE-A5C9-44E6-97AF-7632A74C5D87}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{61EDBCBE-A5C9-44E6-97AF-7632A74C5D87}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{61EDBCBE-A5C9-44E6-97AF-7632A74C5D87}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+	EndGlobalSection
+EndGlobal

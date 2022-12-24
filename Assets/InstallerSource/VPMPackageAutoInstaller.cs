@@ -58,6 +58,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         static VpmPackageAutoInstaller()
         {
+            #if UNITY_5_3_OR_NEWER
+            Debug.Log("Unity Compilation Env. Skipping. You should see actual run from compiled dll");
+            #else
             if (IsDevEnv())
             {
                 Debug.Log("In dev env. skipping auto install & remove self");
@@ -74,6 +77,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
             }
             RemoveSelf();
+            #endif
         }
 
         private static bool IsDevEnv()

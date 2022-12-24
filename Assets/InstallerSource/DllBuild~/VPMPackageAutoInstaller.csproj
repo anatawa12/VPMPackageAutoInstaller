@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+        <EnableDefaultItems>false</EnableDefaultItems>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include=".\UnityEditor.csproj" />
+        <ProjectReference Include="UnityEngine.csproj" />
+        <Compile Include="..\VPMPackageAutoInstaller.cs" />
+    </ItemGroup>
+</Project>
