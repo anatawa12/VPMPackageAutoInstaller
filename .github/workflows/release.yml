@@ -10,6 +10,10 @@ env:
   CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
   PKG_NAME: com.anatawa12.vpm-package-auto-installer.creator
 
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
