@@ -17,6 +17,8 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.update-version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
       - uses: anatawa12/something-releaser@v2
@@ -29,9 +31,11 @@ jobs:
           fi
 
       - name: Update Version Name
+        id: update-version
         run: |
           set-version "$(version-unsnapshot "$(get-version)")"
           echo "VERSION=$(get-version)" >> $GITHUB_ENV
+          echo "version=$(get-version)" >> $GITHUB_OUTPUT
 
       - name: Commit & tag version
         if: ${{ inputs.publish }}
@@ -143,6 +147,8 @@ jobs:
               --arg VERSION "$VERSION" \
               '.repository=$REPO | .version=$VERSION')" \
             >> "$GITHUB_ENV"
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
       - name: Dispatch vpm repo update
         uses: peter-evans/repository-dispatch@v2
         with:
