@@ -134,32 +134,14 @@ jobs:
           git push && git push --tags
 
   publish-vpm:
-    runs-on: ubuntu-latest
+    uses: anatawa12/vpm.anatawa12.com/.github/workflows/update-package.yml@master
     if: inputs.publish
     needs: create-release
-    environment:
-      name: vpm.anatawa12.com
-      url: https://vpm.anatawa12.com/
-    steps:
-      - uses: actions/checkout@v3
-      - uses: anatawa12/something-releaser@v2
-      - uses: snow-actions/git-config-user@v1.0.0
-      - name: Prepare Dispatch payload
-        run: |
-          echo "PAYLOAD=$(echo "{}" | jq -c \
-              --arg REPO "$GITHUB_REPOSITORY" \
-              --arg VERSION "$VERSION" \
-              '.repository=$REPO | .version=$VERSION')" \
-            >> "$GITHUB_ENV"
-        env:
-          VERSION: ${{ needs.create-release.outputs.version }}
-      - name: Dispatch vpm repo update
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.VPM_GITHUB_PAT }}
-          repository: anatawa12/vpm.anatawa12.com
-          event-type: update-package
-          client-payload: ${{ env.PAYLOAD }}
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+      environment: vpm.anatawa12.com
+    secrets:
+      TOKEN: ${{ secrets.VPM_GITHUB_PAT }}
 
   publish-pages:
     runs-on: ubuntu-latest
