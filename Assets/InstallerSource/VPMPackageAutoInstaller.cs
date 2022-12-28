@@ -63,18 +63,20 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         static VpmPackageAutoInstaller()
         {
-            #if UNITY_5_3_OR_NEWER && VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
+#if UNITY_5_3_OR_NEWER && VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
             Debug.Log("Unity Compilation Env. Skipping. You should see actual run from compiled dll");
-            #else
+#else
             if (IsDevEnv())
             {
                 Debug.Log("In dev env. skipping auto install & remove self");
                 return;
             }
 
+            bool installSuccessfull = false;
             try
             {
                 DoInstall();
+                installSuccessfull = true;
             }
             catch (Exception e)
             {
@@ -82,7 +84,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
             }
             RemoveSelf();
-            #endif
+
+            if (!installSuccessfull)
+                AssetDatabase.Refresh();
+#endif
         }
 
         private static bool IsDevEnv()
@@ -239,8 +244,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 RemoveFileAsset(remove);
             }
-
-            AssetDatabase.Refresh();
         }
 
         private static void RemoveFileAsset(string guid)
