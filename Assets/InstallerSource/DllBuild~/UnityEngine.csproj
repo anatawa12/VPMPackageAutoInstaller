@@ -8,6 +8,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include=".\UnityEngine.cs" />
+        <Compile Include=".\UnityEngine.Header.cs" />
     </ItemGroup>
 </Project>
