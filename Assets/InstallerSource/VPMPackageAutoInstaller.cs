@@ -33,6 +33,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -66,11 +67,18 @@ namespace Anatawa12.VpmPackageAutoInstaller
 #if UNITY_5_3_OR_NEWER && VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV
             Debug.Log("Unity Compilation Env. Skipping. You should see actual run from compiled dll");
 #else
+            DoAutoInstall();
+#endif
+        }
+
+        private static async void DoAutoInstall() {
             if (IsDevEnv())
             {
                 Debug.Log("In dev env. skipping auto install & remove self");
                 return;
             }
+
+            await Task.Delay(1);
 
             bool installSuccessfull = false;
             try
@@ -87,7 +95,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             if (!installSuccessfull)
                 AssetDatabase.Refresh();
-#endif
         }
 
         private static bool IsDevEnv()
@@ -509,7 +516,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
                         .GetMethod("Resolve", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
                     if (method != null)
                         method.Invoke(null, null);
-                    AssetDatabase.Refresh();
                 }
                 return;
             }
