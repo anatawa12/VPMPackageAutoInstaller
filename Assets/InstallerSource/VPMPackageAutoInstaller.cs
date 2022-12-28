@@ -83,8 +83,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             bool installSuccessfull = false;
             try
             {
-                DoInstall();
-                installSuccessfull = true;
+                installSuccessfull = DoInstall();
             }
             catch (Exception e)
             {
@@ -113,13 +112,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_NO_PROMPT");
         }
 
-        public static void DoInstall()
+        public static bool DoInstall()
         {
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
             {
                 EditorUtility.DisplayDialog("ERROR", "config.json not found. installing package failed.", "ok");
-                return;
+                return false;
             }
 
             var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
@@ -148,7 +147,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 if (!IsNoPrompt())
                     EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
-                return;
+                return false;
             }
 
             var removePaths = new List<string>();
@@ -182,7 +181,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
 
             if (!IsNoPrompt() && !EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
-                return;
+                return false;
 
             foreach (var repo in vpmRepos)
                 vpmGlobalSetting.AddPackageRepository(repo);
@@ -207,6 +206,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
 
             VRChatPackageManager.CallResolver();
+            return true;
         }
 
         private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos)
