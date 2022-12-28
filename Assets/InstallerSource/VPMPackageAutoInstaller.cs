@@ -127,19 +127,19 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var vpmGlobalSetting = VpmGlobalSetting.Load();
 
             var vpmRepositories = config.Get("vpmRepositories", JsonType.List, true) ?? new List<object>();
-            var vpmRepos = (
+            var allVpmRepos = (
                     from urlInObj in vpmRepositories
                     let repoURL = urlInObj as string
                     where repoURL != null
-                    where !vpmGlobalSetting.RepositoryExists(repoURL)
                     select new VpmUserRepository(repoURL))
                 .ToList();
+            var vpmRepos = allVpmRepos.Where(vpmRepo => !vpmGlobalSetting.RepositoryExists(vpmRepo.Url)).ToList();
 
             var dependencies = config.Get("vpmDependencies", JsonType.Obj, true) ?? new JsonObj();
             var updates = (
                     from package in dependencies.Keys
                     let requestedVersion = dependencies.Get(package, JsonType.String)
-                    let version = ResolveVersion(package, requestedVersion, vpmRepos)
+                    let version = ResolveVersion(package, requestedVersion, allVpmRepos)
                     where vpmManifest.Dependencies.NeedsUpdate(package, version) || vpmManifest.Locked.NeedsUpdate(package, version)
                     select (package, version))
                 .ToList();
