@@ -79,3 +79,34 @@ This uses `InitializeOnLoad` attribute to run some script on unpacked `unitypack
 on `InitializeOnLoad`, modifies `vpm-manifest.json` based on `config.json` and trigger VPM. 
 Just after modification, this package deletes files & folders of this project based on `GUID`.
 GUID of C#, `config.json`, and `com.anatawa12.vpm-package-auto-installer` are hard-coded.
+
+## Development
+
+To make dll distribution, this project is a little complicated.
+Here's overview of the files.
+
+```
+Assets
+  +- com.anatawa12.vpm-package-auto-installer - the folder for unitypackage
+  |    +- config.json - the sample config file
+  |    `- VPMPackageAutoInstaller.dll (gitignored) - the compiled dll file
+  |
+  +- InstallerSource - the folder for sorurce code of dll file
+  |    +- DllBuild~ - the dotnet sln for build `VPMPackageAutoInstaller.dll`
+  |    |   +- build-and-copy.sh - the shellscript to build `VPMPackageAutoInstaller.dll`. there's nothing complicated in this script.
+  |    |   |
+  |    |   +- Directory.Build.props
+  |    |   +- UnityEditor.csproj
+  |    |   +- UnityEngine.csproj
+  |    |   +- UVPMPackageAutoInstaller.csproj
+  |    |   +- VpmPackgeAtoInstallerPrecompiled.csproj - the dotnet solution files
+  |    |   |
+  |    |   +- UnityEditor.Header.cs
+  |    |   `- UnityEngine.Header.cs - the fake module of UnityEngine/Editor to build `VPMPackageAutoInstaller.dll`
+  |    +- com.anatawa12.vpm-package-auto-installer.asmdef - the asmdef for build-time check
+  |    `- VpmPackageAutoInstaller.cs - the main cs file
+  |
+  `- Tester - the module to test vpm package auto installer. This module includes unit tests
+```
+
+To test this package, you need to run `Assets/InstallerSource/build-and-copy.sh` to compile `VPMPackageAutoInstaller.dll`.
