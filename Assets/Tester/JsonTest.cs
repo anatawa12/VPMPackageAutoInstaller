@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Anatawa12.SimpleJson;
 using NUnit.Framework;
 
 namespace Anatawa12.VpmPackageAutoInstaller

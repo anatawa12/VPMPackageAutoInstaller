@@ -29,11 +29,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace Anatawa12.VpmPackageAutoInstaller
-{
-    // minimum json parser with JsonObj, List<object>, string, long, double, bool, and null
-    // This doesn't use Dictionary because it can't save order
 
+// minimum json parser with JsonObj, List<object>, string, long, double, bool, and null
+// This doesn't use Dictionary because it can't save order
+namespace Anatawa12.SimpleJson
+{
     sealed class JsonObj : IEnumerable<(string, object)>
     {
         internal readonly List<(string, object)> Obj = new List<(string, object)>();
