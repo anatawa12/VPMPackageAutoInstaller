@@ -10,5 +10,7 @@
         <ProjectReference Include=".\UnityEditor.csproj" />
         <ProjectReference Include="UnityEngine.csproj" />
         <Compile Include="..\VPMPackageAutoInstaller.cs" />
+        <Compile Include="..\SimpleJson.cs" />
+        <Compile Include="..\MiniVpm.cs" />
     </ItemGroup>
 </Project>
