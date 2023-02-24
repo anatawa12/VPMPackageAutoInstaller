@@ -69,6 +69,13 @@ An experimental project to install [vpm] package published in non-official regis
   "vpmDependencies": {
     // you may use 'x.y.z', '^x.y.z', or '~x.y.z'
     "com.anatawa12.custom-localization-for-editor-extension": "^0.2.0"
+  },
+  // List of folders or files will be removed just before installing the packages above
+  // just like legacyFolders / legacyFiles in VPM manifest
+  "legacyAssets": {
+    // you may use / or \\ for asset path
+    "Assets/path/of/asset": "<guid-of-asset-here>",
+    "Assets\\path\\of\\asset": "<guid-of-asset-here>"
   }
 }
 ```
