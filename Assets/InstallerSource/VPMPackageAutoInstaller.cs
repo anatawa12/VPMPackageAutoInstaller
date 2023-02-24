@@ -150,7 +150,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 foreach (var key in legacyAssets.Keys)
                 {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(key);
+                    // legacyAssets may use '\\' for path separator but in unity '/' is for both windows and posix
+                    var legacyAssetPath = key.Replace('\\', '/');
+                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(legacyAssetPath);
                     if (asset != null)
                     {
                         removePaths.Add(AssetDatabase.GetAssetPath(asset));
