@@ -12,5 +12,6 @@
         <Compile Include="..\VPMPackageAutoInstaller.cs" />
         <Compile Include="..\SimpleJson.cs" />
         <Compile Include="..\MiniVpm.cs" />
+        <Compile Include="..\BurstPatch.cs" />
     </ItemGroup>
 </Project>

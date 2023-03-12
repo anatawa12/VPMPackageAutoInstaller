@@ -89,7 +89,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 AssetDatabase.Refresh();
         }
 
-        private static bool IsDevEnv()
+        internal static bool IsDevEnv()
         {
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
             BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
@@ -247,6 +247,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 RemoveFileAsset(remove);
             }
+
+            BurstPatch.UpdateBurstAssemblyFolders();
         }
 
         private static void RemoveFileAsset(string guid)
