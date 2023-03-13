@@ -10,5 +10,6 @@
         <ProjectReference Include=".\UnityEditor.csproj" />
         <ProjectReference Include="UnityEngine.csproj" />
         <Compile Include="..\*.cs" />
+        <Compile Include="..\semver.net\*.cs" />
     </ItemGroup>
 </Project>
