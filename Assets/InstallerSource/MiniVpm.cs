@@ -256,6 +256,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     internal class VRChatPackageManager
     {
+        public const string OfficialRepository = "https://packages.vrchat.com/official?download";
+        public const string CuratedRepository = "https://packages.vrchat.com/curated?download";
+
         public static string GlobalFoler = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VRChatCreatorCompanion");

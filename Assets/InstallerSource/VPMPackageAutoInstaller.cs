@@ -121,6 +121,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var vpmGlobalSetting = VpmGlobalSetting.Load();
 
             var vpmRepositories = config.Get("vpmRepositories", JsonType.List, true) ?? new List<object>();
+
+            // add curated / official repository
+            if (!vpmRepositories.Contains(VRChatPackageManager.CuratedRepository))
+                vpmRepositories.Add(VRChatPackageManager.CuratedRepository);
+            if (!vpmRepositories.Contains(VRChatPackageManager.OfficialRepository))
+                vpmRepositories.Add(VRChatPackageManager.OfficialRepository);
+
             var allVpmRepos = (
                     from urlInObj in vpmRepositories
                     let repoURL = urlInObj as string
@@ -141,6 +148,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     select package)
                 .ToList();
 
+            //VpmPackageAutoInstaller.
             // TODO: resolve dependencies
 
             if (updates.Count == 0)
