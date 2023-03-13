@@ -76,8 +76,8 @@ crashlytics-build.properties
 
 /Packages/com.anatawa12.auto-package-installer.creator/installer-template.unitypackage.bytes
 /Packages/com.anatawa12.auto-package-installer.creator/installer-template.unitypackage.bytes.meta
-/Assets/com.anatawa12.vpm-package-auto-installer/VPMPackageAutoInstaller.dll
-/Assets/com.anatawa12.vpm-package-auto-installer/VPMPackageAutoInstaller.dll.meta
+/Assets/com.anatawa12.vpm-package-auto-installer/com.anatawa12.vpm-package-auto-installer.dll
+/Assets/com.anatawa12.vpm-package-auto-installer/com.anatawa12.vpm-package-auto-installer.dll.meta
 
 .idea
 
