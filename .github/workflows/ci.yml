@@ -16,6 +16,8 @@ jobs:
           path: Library
           key: Library-${{ matrix.projectPath }}
           restore-keys: Library-
+      - name: Check for env
+        run: ls ./Assets/InstallerSource/semver.net
       - name: Build Installer dll
         run: ./Assets/InstallerSource/DllBuild~/build-and-copy.sh
       - uses: game-ci/unity-test-runner@v2
