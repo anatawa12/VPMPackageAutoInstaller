@@ -133,13 +133,15 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             var dependencies = config.Get("vpmDependencies", JsonType.Obj, true) ?? new JsonObj();
             var updates = (
-                    from package in dependencies.Keys
-                    let requestedVersion = dependencies.Get(package, JsonType.String)
-                    let version = ResolveVersion(package, requestedVersion, allVpmRepos, includePrerelease)
-                    where vpmManifest.Dependencies.NeedsUpdate(package, version) ||
-                          vpmManifest.Locked.NeedsUpdate(package, version)
-                    select (package, version))
+                    from packageName in dependencies.Keys
+                    let requestedVersion = dependencies.Get(packageName, JsonType.String)
+                    let package = ResolveVersion(packageName, requestedVersion, allVpmRepos, includePrerelease)
+                    where vpmManifest.Dependencies.NeedsUpdate(package.Name, package.Version) ||
+                          vpmManifest.Locked.NeedsUpdate(package.Name, package.Version)
+                    select package)
                 .ToList();
+
+            // TODO: resolve dependencies
 
             if (updates.Count == 0)
             {
@@ -172,7 +174,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
 
             var confirmMessage = "You're installing the following packages:\n";
-            confirmMessage += string.Join("\n", updates.Select(p => $"{p.package} version {p.version}"));
+            confirmMessage += string.Join("\n", updates.Select(p => $"{p.Name} version {p.Version}"));
 
             if (removePaths.Count != 0)
             {
@@ -186,8 +188,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             foreach (var repo in vpmRepos)
                 vpmGlobalSetting.AddPackageRepository(repo);
 
-            foreach (var (key, value) in updates)
-                vpmManifest.AddPackage(key, value);
+            foreach (var package in updates)
+                vpmManifest.AddPackage(package);
+
+            // TODO: do install
 
             vpmGlobalSetting.Save();
             vpmManifest.Save();
@@ -205,23 +209,22 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 Debug.LogError($"error during deleting legacy: {e}");
             }
 
+            // TODO: remove calling resolver
             VRChatPackageManager.CallResolver();
             return true;
         }
 
-        private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos, 
+        private static VpmPackageJson ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos,
             bool includePrerelease)
         {
             // it's specific version
-            if (Version.TryParse(requestedVersion, out _))
-                return requestedVersion;
-
             var range = Range.Parse(requestedVersion);
 
-            return vpmRepos.SelectMany(repo => repo.GetVersions(package).Select(x => Version.Parse(x)))
-                .Where(v => range.IsSatisfied(v, includePrerelease: includePrerelease))
-                .Max()
-                .ToString();
+            return vpmRepos.SelectMany(repo => repo.GetVersions(package))
+                .Select(x => (version: Version.Parse(x.Version), package: x))
+                .Where(x => range.IsSatisfied(x.version, includePrerelease: includePrerelease))
+                .MaxBy(x => x.version)
+                .package;
         }
 
         public static void RemoveSelf()
@@ -267,6 +270,39 @@ namespace Anatawa12.VpmPackageAutoInstaller
         {
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (asset != null) EditorUtility.SetDirty(asset);
+        }
+    }
+
+    static class Extensions
+    {
+        // simplified MaxBy from dotnet 7
+        public static TSource MaxBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector)
+        {
+            var comparer = Comparer<TKey>.Default;
+
+            using (IEnumerator<TSource> e = source.GetEnumerator())
+            {
+                if (!e.MoveNext())
+                {
+                    return default;
+                }
+
+                var value = e.Current;
+                var key = keySelector(value);
+
+                while (e.MoveNext())
+                {
+                    var nextValue = e.Current;
+                    var nextKey = keySelector(nextValue);
+
+                    if (comparer.Compare(nextKey, key) <= 0) continue;
+
+                    key = nextKey;
+                    value = nextValue;
+                }
+
+                return value;
+            }
         }
     }
 }

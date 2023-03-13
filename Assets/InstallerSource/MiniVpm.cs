@@ -97,6 +97,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             Locked = new VpmManifestDependencies(body.GetOrPut("locked", () => new JsonObj(), JsonType.Obj));
         }
 
+        public bool AddPackage(VpmPackageJson package) => AddPackage(package.Name, package.Version);
+
         // add to dependencies & lock if needed
         public bool AddPackage(string package, string version, bool overrideNewer = false)
         {
@@ -146,11 +148,27 @@ namespace Anatawa12.VpmPackageAutoInstaller
             _packages = new Lazy<JsonObj>(() => Json.Get("packages", JsonType.Obj, true), false);
         }
 
-        public IEnumerable<string> GetVersions(string package) =>
+        public IEnumerable<VpmPackageJson> GetVersions(string package) =>
             _packages.Value?.Get(package, JsonType.Obj, true)
                 ?.Get("versions", JsonType.Obj, true)
-                ?.Keys
-            ?? Array.Empty<string>();
+                ?.Select(x => new VpmPackageJson(x.Item1, (JsonObj)x.Item2))
+            ?? Array.Empty<VpmPackageJson>();
+    }
+
+    internal class VpmPackageJson
+    {
+        public JsonObj Json { get; }
+        public string Version { get; }
+        public string Name { get; }
+        public string Url { get; }
+
+        public VpmPackageJson(string version, JsonObj json)
+        {
+            Version = version;
+            Json = json;
+            Name = Json.Get("name", JsonType.String);
+            Url = Json.Get("url", JsonType.String);
+        }
     }
 
     internal class VpmGlobalSetting : IDisposable
