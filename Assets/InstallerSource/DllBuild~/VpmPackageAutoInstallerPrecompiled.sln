@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VPMPackageAutoInstaller", "VPMPackageAutoInstaller.csproj", "{15641F29-1985-47DB-BE22-36A1CC59FFA0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "com.anatawa12.vpm-package-auto-installer", "com.anatawa12.vpm-package-auto-installer.csproj", "{15641F29-1985-47DB-BE22-36A1CC59FFA0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityEditor", "UnityEditor.csproj", "{6C865695-9C05-46D5-9833-A4230F808C13}"
 EndProject

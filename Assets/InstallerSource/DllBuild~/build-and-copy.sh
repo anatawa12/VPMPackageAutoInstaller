@@ -5,8 +5,8 @@ set -eu
 cd "$(dirname "$0")"
 
 # build
-dotnet build VPMPackageAutoInstaller.csproj -c Release 
+dotnet build com.anatawa12.vpm-package-auto-installer.csproj -c Release 
 
 # copy dll and meta
-cp ./bin/Release/netstandard2.0/VPMPackageAutoInstaller.dll ../../com.anatawa12.vpm-package-auto-installer/
-cp ./VPMPackageAutoInstaller.dll.meta ../../com.anatawa12.vpm-package-auto-installer/
+cp ./bin/Release/netstandard2.0/com.anatawa12.vpm-package-auto-installer.dll ../../com.anatawa12.vpm-package-auto-installer/
+cp ./com.anatawa12.vpm-package-auto-installer.dll.meta ../../com.anatawa12.vpm-package-auto-installer/

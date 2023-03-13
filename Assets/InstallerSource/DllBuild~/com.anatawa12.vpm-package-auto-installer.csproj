@@ -4,6 +4,7 @@
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
         <EnableDefaultItems>false</EnableDefaultItems>
+        <RootNamespace>VPMPackageAutoInstaller</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
