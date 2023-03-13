@@ -254,7 +254,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         void IDisposable.Dispose() => Save();
     }
 
-    internal class VRChatPackageManager
+    internal static class VRChatPackageManager
     {
         public const string OfficialRepository = "https://packages.vrchat.com/official?download";
         public const string CuratedRepository = "https://packages.vrchat.com/curated?download";
@@ -267,6 +267,16 @@ namespace Anatawa12.VpmPackageAutoInstaller
         public static string GlobalReposFolder = Path.Combine(GlobalFoler, "Repos");
         public static string ProjectFolder = Directory.GetCurrentDirectory();
         public static string VpmManifestPath = Path.Combine(ProjectFolder, "Packages", "vpm-manifest.json");
+
+        public static readonly HttpClient GlobalHttp;
+
+        static VRChatPackageManager()
+        {
+            GlobalHttp = new HttpClient();
+            GlobalHttp.DefaultRequestHeaders.Add("User-Agent", 
+                "VPMPackageAutoInstaller/0.3 (An tool to install VPM package from unitypackage; " +
+                "https://github.com/anatawa12/VPMPackageAutoInstaller)");
+        }
 
         public static void CallResolver()
         {
@@ -312,7 +322,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         public static string FetchText(string url)
         {
-            var response = new HttpClient().GetAsync(url).GetAwaiter().GetResult();
+            var response = GlobalHttp.GetAsync(url).GetAwaiter().GetResult();
             if (!response.IsSuccessStatusCode)
                 throw new IOException($"Getting {url} failed");
 
