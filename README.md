@@ -70,6 +70,9 @@ An experimental project to install [vpm] package published in non-official regis
     // you may use 'x.y.z', '^x.y.z', or '~x.y.z'
     "com.anatawa12.custom-localization-for-editor-extension": "^0.2.0"
   },
+  // by default, beta releases are not allowed (except for '0.1.2-beta.4' is allowed for `~0.1.2-beta.3`)
+  // to allow all beta versions in that range, please make this true
+  "includePrerelease": false,
   // List of folders or files will be removed just before installing the packages above
   // just like legacyFolders / legacyFiles in VPM manifest
   "legacyAssets": {

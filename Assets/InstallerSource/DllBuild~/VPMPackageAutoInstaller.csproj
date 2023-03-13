@@ -9,9 +9,7 @@
     <ItemGroup>
         <ProjectReference Include=".\UnityEditor.csproj" />
         <ProjectReference Include="UnityEngine.csproj" />
-        <Compile Include="..\VPMPackageAutoInstaller.cs" />
-        <Compile Include="..\SimpleJson.cs" />
-        <Compile Include="..\MiniVpm.cs" />
-        <Compile Include="..\BurstPatch.cs" />
+        <Compile Include="..\*.cs" />
+        <Compile Include="..\semver.net\*.cs" />
     </ItemGroup>
 </Project>

@@ -32,8 +32,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
+using SemanticVersioning;
 using UnityEditor;
 using UnityEngine;
+using Version = SemanticVersioning.Version;
 
 [assembly: InternalsVisibleTo("com.anatawa12.vpm-package-auto-installer.tester")]
 
@@ -127,11 +129,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .ToList();
             var vpmRepos = allVpmRepos.Where(vpmRepo => !vpmGlobalSetting.RepositoryExists(vpmRepo.Url)).ToList();
 
+            var includePrerelease = config.Get("includePrerelease", JsonType.Bool, true);
+
             var dependencies = config.Get("vpmDependencies", JsonType.Obj, true) ?? new JsonObj();
             var updates = (
                     from package in dependencies.Keys
                     let requestedVersion = dependencies.Get(package, JsonType.String)
-                    let version = ResolveVersion(package, requestedVersion, allVpmRepos)
+                    let version = ResolveVersion(package, requestedVersion, allVpmRepos, includePrerelease)
                     where vpmManifest.Dependencies.NeedsUpdate(package, version) ||
                           vpmManifest.Locked.NeedsUpdate(package, version)
                     select (package, version))
@@ -205,40 +209,19 @@ namespace Anatawa12.VpmPackageAutoInstaller
             return true;
         }
 
-        private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos)
+        private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos, 
+            bool includePrerelease)
         {
-            if (!requestedVersion.StartsWith("~") && !requestedVersion.StartsWith("^")) return requestedVersion;
+            // it's specific version
+            if (Version.TryParse(requestedVersion, out _))
+                return requestedVersion;
 
-            var caret = requestedVersion[0] == '^';
-            var requestedParsed = Version.Parse(requestedVersion.Substring(1));
-            var upperBound = caret ? UpperBoundForCaret(requestedParsed) : UpperBoundForTilda(requestedParsed);
-            var allowPrerelease = requestedParsed.Prerelease != null;
-            return vpmRepos.SelectMany(repo => repo.GetVersions(package).Select(Version.Parse))
-                .Where(v => (allowPrerelease || v.Prerelease == null) && requestedParsed <= v && v < upperBound)
-                .Concat(new[] { requestedParsed })
+            var range = Range.Parse(requestedVersion);
+
+            return vpmRepos.SelectMany(repo => repo.GetVersions(package).Select(x => Version.Parse(x)))
+                .Where(v => range.IsSatisfied(v, includePrerelease: includePrerelease))
                 .Max()
                 .ToString();
-        }
-
-        private static Version UpperBoundForTilda(Version requestedVersion) =>
-            requestedVersion.HasMinor
-                ? new Version(requestedVersion.Major, requestedVersion.Minor + 1, -1)
-                : new Version(requestedVersion.Major + 1, -1, -1);
-
-        private static Version UpperBoundForCaret(Version requestedVersion)
-        {
-            if (requestedVersion.Major != 0)
-                return new Version(requestedVersion.Major + 1, -1, -1);
-            if (requestedVersion.Minor != 0)
-                return new Version(requestedVersion.Major, requestedVersion.Minor + 1, -1);
-            if (requestedVersion.Patch != 0)
-                return new Version(requestedVersion.Major, requestedVersion.Minor, requestedVersion.Patch + 1);
-            // this mean, 0 or 0.0 or 0.0.0. use 1 or 0.1 or 0.0.1
-            if (requestedVersion.HasPatch)
-                return new Version(0, 0, 1);
-            if (requestedVersion.HasMinor)
-                return new Version(0, 1, -1);
-            return new Version(1, -1, -1);
         }
 
         public static void RemoveSelf()
