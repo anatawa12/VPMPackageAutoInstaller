@@ -10,7 +10,7 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "VPMPackageAutoInstaller.dll"
+        "com.anatawa12.vpm-package-auto-installer.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],
