@@ -1,5 +1,5 @@
 {
-    "name": "com.anatawa12.vpm-package-auto-installer",
+    "name": "com.anatawa12.vpm-package-auto-installer.source",
     "references": [],
     "includePlatforms": [
         "Editor"
