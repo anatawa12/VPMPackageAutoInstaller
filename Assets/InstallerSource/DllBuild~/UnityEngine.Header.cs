@@ -19,5 +19,7 @@ namespace UnityEngine
     {
         public static void LogError(object msg) => throw null;
         public static void Log(object message) => throw null;
+        public static void LogException(System.Exception exception) => throw null;
+        public static void Assert(bool condition, object message) => throw null;
     }
 }

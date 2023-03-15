@@ -12,5 +12,12 @@
         <ProjectReference Include="UnityEngine.csproj" />
         <Compile Include="..\*.cs" />
         <Compile Include="..\semver.net\*.cs" />
+        <Compile Include="..\VrcGetCs\*.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="JetBrains.Annotations" Version="2022.3.1">
+          <ExcludeAssets>runtime</ExcludeAssets>
+      </PackageReference>
     </ItemGroup>
 </Project>
