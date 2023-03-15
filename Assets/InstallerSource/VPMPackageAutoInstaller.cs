@@ -29,7 +29,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -148,10 +147,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 unityProject.CheckAddingPackages(toInstall);
             }
-            catch (Exception) // TODO: use separated exception
+            catch (VrcGet.VrcGetException e)
             {
                 if (!IsNoPrompt())
-                    EditorUtility.DisplayDialog("ERROR!", "Installing package failed due to conflicts", "OK");
+                    EditorUtility.DisplayDialog("ERROR!", 
+                        "Installing package failed due to conflicts\n" +
+                        "Please see console for more details", "OK");
+                Debug.LogException(e);
                 return false;
             }
 

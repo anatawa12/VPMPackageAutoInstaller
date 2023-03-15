@@ -318,9 +318,9 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         public async Task AddRemoteRepo([NotNull] string url, [CanBeNull] string name)
         {
             if (GetUserRepos().Any(x => x.URL == url))
-                throw new Exception("Already Added");
+                throw new VrcGetException("Already Added");
             if (_http == null)
-                throw new Exception("OfflineMode");
+                throw new OfflineModeException();
 
 
             var response = await DownloadRemoteRepository(_http, url, null);
@@ -353,7 +353,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
             if (GetUserRepos().Any(x => x.URL == url))
                 return; // allow already added
             if (_http == null)
-                throw new Exception("OfflineMode");
+                throw new OfflineModeException();
 
             var response = await DownloadRemoteRepository(_http, url, null);
             Debug.Assert(response != null, nameof(response) + " != null");
@@ -397,7 +397,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         public Task AddLocalRepo([NotNull] string path, [CanBeNull] string name)
         {
             if (GetUserRepos().Any(x => x.LocalPath == path))
-                throw new Exception("Already Added");
+                throw new VrcGetException("Already Added");
 
             AddUserRepo(new UserRepoSetting(path, name, null));
 
@@ -553,7 +553,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         {
             if (_manifest.Dependencies.TryGetValue(request.Name, out var dependency) &&
                 dependency.Version >= request.Version)
-                throw new Exception("AlreadyNewerPackageInstalled");
+                throw new VrcGetException("AlreadyNewerPackageInstalled");
             if (_manifest.Locked.TryGetValue(request.Name, out var locked) && 
                 locked.Version >= request.Version)
             {
@@ -613,7 +613,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
                 {
                     var found = await env.FindPackageByName(dep, v => range.IsSatisfied(v));
                     if (found == null)
-                        throw new Exception($"Dependency ({dep}) Not Found");
+                        throw new VrcGetException($"Dependency ({dep}) Not Found");
                     addingDeps.Add(found);
                 }
             }
@@ -627,7 +627,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
                 {
                     if (!dep.IsSatisfied(version))
                     {
-                        throw new Exception($"Conflict with Dependencies: {name} conflicts with {pkgName}");
+                        throw new VrcGetException($"Conflict with Dependencies: {name} conflicts with {pkgName}");
                     }
                 }
             }
@@ -636,14 +636,14 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
             {
                 if (dirName == name)
                 {
-                    throw new Exception($"Conflicts with unlocked package: {name}");
+                    throw new VrcGetException($"Conflicts with unlocked package: {name}");
                 }
 
                 if (packageJson == null) continue;
 
                 if (packageJson.Name == name)
                 {
-                    throw new Exception($"Conflicts with unlocked package: {name}");
+                    throw new VrcGetException($"Conflicts with unlocked package: {name}");
                 }
             }
         }

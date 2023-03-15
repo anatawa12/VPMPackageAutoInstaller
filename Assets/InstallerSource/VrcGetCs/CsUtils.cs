@@ -117,4 +117,20 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
 
         public int GetHashCode(T obj) => _keySelector(obj).GetHashCode();
     }
+
+    internal class VrcGetException : Exception
+    {
+        public VrcGetException(string message) : base(message)
+        {
+        }
+
+        public VrcGetException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
+    }
+
+    internal class OfflineModeException : VrcGetException
+    {
+        public OfflineModeException() : base("Offline Mode") {}
+    }
 }
