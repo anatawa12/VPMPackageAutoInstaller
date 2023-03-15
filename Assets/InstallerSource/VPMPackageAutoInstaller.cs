@@ -31,8 +31,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -73,16 +75,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             await Task.Delay(1);
 
-            bool installSuccessfull = false;
-            try
-            {
-                installSuccessfull = await DoInstall();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
-            }
+            bool installSuccessfull = DoInstall();
 
             RemoveSelf();
 
@@ -106,7 +99,21 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_NO_PROMPT");
         }
 
-        public static async Task<bool> DoInstall()
+        public static bool DoInstall()
+        {
+            try
+            {
+                return DoInstallImpl().Execute();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
+                return false;
+            }
+        }
+
+        private static async SyncedTask<bool> DoInstallImpl()
         {
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
@@ -333,5 +340,113 @@ namespace Anatawa12.VpmPackageAutoInstaller
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
         }
+    }
+
+    [AsyncMethodBuilder(typeof(SyncedTask<>))]
+    public class SyncedTask<TResult>
+    {
+        private IAsyncStateMachine _stateMachine;
+        private bool _end = false;
+        private TResult _result;
+        private Exception _exception;
+
+        // block system
+        private TaskCompletionSource<bool> _blockSource;
+
+        [UsedImplicitly] // async method builder
+        public static SyncedTask<TResult> Create() => new SyncedTask<TResult>();
+
+        [UsedImplicitly] // async method builder
+        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            stateMachine.MoveNext();
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetStateMachine(IAsyncStateMachine stateMachine)
+        {
+            _stateMachine = stateMachine;
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetResult(TResult result)
+        {
+            _result = result;
+            _end = true;
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetException(Exception exception)
+        {
+            _exception = exception;
+            _end = true;
+        }
+
+        [UsedImplicitly] // async method builder
+        public SyncedTask<TResult> Task => this;
+
+        [UsedImplicitly] // async method builder
+        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
+            where TAwaiter : INotifyCompletion
+            where TStateMachine : IAsyncStateMachine
+        {
+            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
+            _blockSource = new TaskCompletionSource<bool>();
+            if (_stateMachine == null)
+            {
+                _stateMachine = stateMachine;
+                _stateMachine.SetStateMachine(_stateMachine);
+            }
+
+            SynchronizationContext.SetSynchronizationContext(null);
+            awaiter.OnCompleted(() => _blockSource.SetResult(true));
+        }
+
+        [UsedImplicitly] // async method builder
+        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter,
+            ref TStateMachine stateMachine)
+            where TAwaiter : ICriticalNotifyCompletion
+            where TStateMachine : IAsyncStateMachine
+        {
+            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
+            _blockSource = new TaskCompletionSource<bool>();
+            if (_stateMachine == null)
+            {
+                _stateMachine = stateMachine;
+                _stateMachine.SetStateMachine(_stateMachine);
+            }
+
+            SynchronizationContext.SetSynchronizationContext(null);
+            awaiter.UnsafeOnCompleted(() => _blockSource.SetResult(true));
+        }
+
+        public TResult Execute()
+        {
+            while (!_end)
+            {
+                _blockSource.Task.Wait();
+                _blockSource = null;
+                SynchronizationContext.SetSynchronizationContext(null);
+                _stateMachine.MoveNext();
+            }
+
+            if (_exception != null)
+                throw _exception;
+            return _result;
+        }
+    }
+}
+
+namespace System.Runtime.CompilerServices
+{
+    sealed class AsyncMethodBuilderAttribute : Attribute
+    {
+        public AsyncMethodBuilderAttribute(Type builderType)
+        {
+            BuilderType = builderType;
+        }
+
+        public Type BuilderType { get; }
     }
 }
