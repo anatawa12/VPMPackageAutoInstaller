@@ -72,6 +72,36 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
 
         public static void Deconstruct<TKey, TValue>(this KeyValuePair<TKey, TValue> self, out TKey key,
             out TValue value) => (key, value) = (self.Key, self.Value);
+
+        // simplified MaxBy from dotnet 7
+        public static TSource MaxBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector)
+        {
+            var comparer = Comparer<TKey>.Default;
+
+            using (IEnumerator<TSource> e = source.GetEnumerator())
+            {
+                if (!e.MoveNext())
+                {
+                    return default;
+                }
+
+                var value = e.Current;
+                var key = keySelector(value);
+
+                while (e.MoveNext())
+                {
+                    var nextValue = e.Current;
+                    var nextKey = keySelector(nextValue);
+
+                    if (comparer.Compare(nextKey, key) <= 0) continue;
+
+                    key = nextKey;
+                    value = nextValue;
+                }
+
+                return value;
+            }
+        }
     }
 
     internal class KeyEqualityComparer<T, TKey> : IEqualityComparer<T>
