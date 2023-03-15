@@ -231,6 +231,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     unityProject._manifest.AddDependency(package.Name, new VrcGet.VpmDependency(package.Version));
 
             await unityProject.DoAddPackagesToLocked(env, toInstall);
+            await unityProject.Save();
+            await env.Save();
 
             void RemoveLegacyAsset(string path, Action<string> remover)
             {

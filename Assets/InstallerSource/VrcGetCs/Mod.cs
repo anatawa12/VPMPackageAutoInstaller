@@ -139,6 +139,7 @@ namespace Anatawa12.VrcGet
 
             (await GetRepos())
                 .Select(repo => repo.Cache.Get(package, JsonType.Obj, true))
+                .Where(x => x != null)
                 .Select(json => new PackageVersions(json))
                 .SelectMany(x => x.Versions.Values)
                 .AddAllTo(list);
@@ -296,7 +297,14 @@ namespace Anatawa12.VrcGet
                     File.WriteAllText(shaPath, $"{ToHex(hash)} {zipFileName}\n");
                 }
 
-                Directory.Delete(destDir);
+                try
+                {
+                    Directory.Delete(destDir);
+                }
+                catch
+                {
+                    //ignored
+                }
 
                 using (var archive = new ZipArchive(zipFile, ZipArchiveMode.Read, false))
                     archive.ExtractToDirectory(destDir);
