@@ -186,7 +186,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             var requestedPackages = await Task.WhenAll(config.VpmDependencies.Select(async kvp =>
             {
-                var package = await env.FindPackageByName(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease));
+                var package = await env.FindPackageByName(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease))
+                    ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
                 var status = unityProject.CheckAddPackage(package);
                 return (package, status);
             }));
