@@ -76,7 +76,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             bool installSuccessfull = false;
             try
             {
-                installSuccessfull = DoInstall().GetAwaiter().GetResult();
+                installSuccessfull = await DoInstall();
             }
             catch (Exception e)
             {
