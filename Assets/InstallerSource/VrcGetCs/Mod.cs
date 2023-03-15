@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
@@ -851,7 +852,7 @@ namespace Anatawa12.VrcGet
         {
             try
             {
-                return await Task.Run(() => File.ReadAllText(path));
+                return await Task.Run(() => File.ReadAllText(path, Encoding.UTF8));
             }
             catch (FileNotFoundException)
             {
