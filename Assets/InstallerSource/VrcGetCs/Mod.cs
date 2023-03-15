@@ -864,7 +864,7 @@ namespace Anatawa12.VrcGet
         {
             var file = await TryReadFile(manifestPath);
             if (file == null) return @default();
-            if (file.StartsWith("\uFEFF"))
+            if (file.StartsWith("\uFEFF", StringComparison.Ordinal))
                 file = file.Substring(1);
 
             return parser(new JsonParser(file).Parse(JsonType.Obj));
