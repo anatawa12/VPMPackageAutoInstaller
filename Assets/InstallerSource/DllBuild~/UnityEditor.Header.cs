@@ -20,6 +20,8 @@ namespace UnityEditor
         public static void SetDirty(UnityEngine.Object obj) => throw null;
         public static bool DisplayDialog(string subject, string message, string ok) => throw null;
         public static bool DisplayDialog(string subject, string message, string ok, string cancel) => throw null;
+        public static void DisplayProgressBar(string title, string info, float progress) => throw null;
+        public static void ClearProgressBar() => throw null;
     }
 
     public class InitializeOnLoadAttribute : System.Attribute

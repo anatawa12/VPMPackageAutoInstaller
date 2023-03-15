@@ -91,6 +91,49 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
 
+        private enum Progress
+        {
+            LoadingConfigJson,
+            LoadingVpmManifestJson,
+            LoadingGlobalSettingsJson,
+            DownloadingNewRepositories,
+            DownloadingPackageInfo,
+            ResolvingDependencies,
+            CheckingInstallationInformation,
+            Prompting,
+            SavingRemoteRepositories,
+            DownloadingAndExtractingPackages,
+            SavingConfigChanges,
+            RemovingLegacyAssets,
+            RefreshingUnityPackageManger,
+            Finish
+        }
+
+        private static void ShowProgress(string message, Progress progress)
+        {
+            var ratio = (float)progress / (float)Progress.Finish;
+            EditorUtility.DisplayProgressBar("VPAI Installer", message, ratio);
+        }
+
+        public static bool DoInstall0()
+        {
+            EditorUtility.DisplayProgressBar("VPAI Installer", "Starting Installer...", 0.0f);
+            try
+            {
+                return DoInstallImpl().Execute();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
+                return false;
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
         private static bool IsNoPrompt()
         {
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
@@ -115,6 +158,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         private static async SyncedTask<bool> DoInstallImpl()
         {
+            ShowProgress("Loading VPAI config...", Progress.LoadingConfigJson);
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
             {
@@ -122,17 +166,22 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
-            var config = new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
+            var config =
+                new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
                 "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
+            ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
             var env = await VrcGet.Environment.Create(client);
+            ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
             var unityProject = await VrcGet.UnityProject.FindUnityProject(Directory.GetCurrentDirectory());
 
+            ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
             await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null)));
 
+            ShowProgress("Downloading package information...", Progress.DownloadingPackageInfo);
             var includePrerelease = config.includePrerelease;
 
             var requestedPackages = await Task.WhenAll(config.VpmDependencies.Select(async kvp =>
@@ -142,6 +191,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return (package, status);
             }));
 
+            ShowProgress("Downloading & Resolving dependencies information...", Progress.ResolvingDependencies);
             List<VrcGet.PackageJson> toInstall;
             {
                 var installRequested = requestedPackages.Where(x => x.status == VrcGet.AddPackageStatus.InstallToLocked)
@@ -150,6 +200,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 toInstall.AddRange(installRequested);
             }
 
+            ShowProgress("Checking installation information...", Progress.CheckingInstallationInformation);
             try
             {
                 unityProject.CheckAddingPackages(toInstall);
@@ -157,7 +208,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             catch (VrcGet.VrcGetException e)
             {
                 if (!IsNoPrompt())
-                    EditorUtility.DisplayDialog("ERROR!", 
+                    EditorUtility.DisplayDialog("ERROR!",
                         "Installing package failed due to conflicts\n" +
                         "Please see console for more details", "OK");
                 Debug.LogException(e);
@@ -201,6 +252,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 CollectLegacyAssets(removeFiles, packageJson.LegacyFiles, File.Exists);
             }
 
+            ShowProgress("Prompting to user...", Progress.Prompting);
             if (!IsNoPrompt())
             {
                 var confirmMessage = new StringBuilder("You're installing the following packages:");
@@ -231,13 +283,17 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             // user confirm got. now, edit settings
 
+            ShowProgress("Saving remote repositories...", Progress.SavingRemoteRepositories);
             await env.SavePendingRepositories();
 
+            ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
             foreach (var (package, status) in requestedPackages)
                 if (status != VrcGet.AddPackageStatus.AlreadyAdded)
                     unityProject._manifest.AddDependency(package.Name, new VrcGet.VpmDependency(package.Version));
 
             await unityProject.DoAddPackagesToLocked(env, toInstall);
+
+            ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
             await unityProject.Save();
             await env.Save();
 
@@ -252,13 +308,18 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     Debug.LogError($"error during deleting legacy: {path}: {e}");
                 }
             }
-            
+
+            ShowProgress("Removing legacy folders/files...", Progress.RemovingLegacyAssets);
+
             foreach (var path in removeFiles)
                 RemoveLegacyAsset(path, File.Delete);
             foreach (var path in removeFolders)
                 RemoveLegacyAsset(path, Directory.Delete);
 
+            ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
             ResolveUnityPackageManger();
+
+            ShowProgress("Almost done!", Progress.Finish);
             return true;
         }
 
