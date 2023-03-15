@@ -7,7 +7,7 @@ using JetBrains.Annotations;
 using SemanticVersioning;
 using Version = SemanticVersioning.Version;
 
-namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
+namespace Anatawa12.VrcGet
 {
     // I use this class to keep original range representation
     internal sealed class VersionRange

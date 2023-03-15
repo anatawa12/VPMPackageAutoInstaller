@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
 using UnityEngine;
-using static Anatawa12.VpmPackageAutoInstaller.VrcGet.ModStatics;
+using static Anatawa12.VrcGet.ModStatics;
 
-namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
+namespace Anatawa12.VrcGet
 {
     class RepoHolder
     {

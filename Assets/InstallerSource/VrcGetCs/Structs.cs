@@ -5,7 +5,7 @@ using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
 using Version = SemanticVersioning.Version;
 
-namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
+namespace Anatawa12.VrcGet
 {
     #region manifest
 

@@ -10,11 +10,11 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
-using static Anatawa12.VpmPackageAutoInstaller.VrcGet.ModStatics;
+using static Anatawa12.VrcGet.ModStatics;
 using Debug = UnityEngine.Debug;
 using Version = SemanticVersioning.Version;
 
-namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
+namespace Anatawa12.VrcGet
 {
     class Environment
     {
