@@ -74,6 +74,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         [NotNull] public Version Version { get; }
         [NotNull] public string Url { get; }
         [NotNull] public Dictionary<string, VersionRange> VpmDependencies { get; }
+        [NotNull] public Dictionary<string, string> LegacyFolders { get; } // VPAI
+        [NotNull] public Dictionary<string, string> LegacyFiles { get; } // VPAI
 
         public PackageJson(JsonObj json)
         {
@@ -84,6 +86,14 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
             VpmDependencies = Json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VersionRange>();
+            // begin VPAI
+            LegacyFolders = Json.Get("legacyFolders", JsonType.Obj, true)
+                                ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
+                            ?? new Dictionary<string, string>();
+            LegacyFiles = Json.Get("legacyFiles", JsonType.Obj, true)
+                                  ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
+                              ?? new Dictionary<string, string>();
+            // end VPAI 
         }
     }
 

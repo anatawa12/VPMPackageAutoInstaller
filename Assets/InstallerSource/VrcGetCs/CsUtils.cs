@@ -26,6 +26,9 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
 
         public bool IsSatisfied(Version installed) => _range.IsSatisfied(installed);
 
+        public bool IsSatisfied(Version installed, bool includePrerelease) =>
+            _range.IsSatisfied(installed, includePrerelease);
+
         private bool Equals(VersionRange other) => _original == other._original;
 
         public override bool Equals(object obj) =>

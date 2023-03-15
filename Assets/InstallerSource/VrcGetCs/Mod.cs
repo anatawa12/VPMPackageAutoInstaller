@@ -22,6 +22,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         [NotNull] private readonly string _globalDir;
         [NotNull] private readonly JsonObj _settings;
         [NotNull] private readonly RepoHolder _repoCache;
+        [NotNull] public readonly List<LocalCachedRepository> PendingRepositories = new List<LocalCachedRepository>(); // VPAI
         private bool _settingsDirty;
 
         private Environment([CanBeNull] HttpClient http, [NotNull] string globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, bool settingsDirty)
@@ -99,9 +100,10 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
 
             var definedSources = PreDefinedRepoSource.Sources;
             var userRepoSources = userRepos.Select(x => new UserRepoSource(x));
+            var pendingRepoSources = PendingRepositories.Select(x => new PendingSource(x)); // VPAI
 
             return await Task.Run(() =>
-                undefinedRepos.Concat<IRepoSource>(definedSources).Concat(userRepoSources).ToList());
+                undefinedRepos.Concat<IRepoSource>(definedSources).Concat(userRepoSources).Concat(pendingRepoSources).ToList());
         }
 
         [ItemNotNull]
@@ -344,6 +346,54 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
             AddUserRepo(new UserRepoSetting(localPath, name, url));
         }
 
+        #region VPAI
+
+        public async Task AddPendingRepository([NotNull] string url, [CanBeNull] string name)
+        {
+            if (GetUserRepos().Any(x => x.URL == url))
+                return; // allow already added
+            if (_http == null)
+                throw new Exception("OfflineMode");
+
+            var response = await DownloadRemoteRepository(_http, url, null);
+            Debug.Assert(response != null, nameof(response) + " != null");
+            var (remoteRepo, etag) = response.Value;
+            var localPath = $"com.anatawa12.vpai.virtually-added.{Guid.NewGuid()}.json";
+
+            if (name == null)
+                name = remoteRepo.Get("name", JsonType.String, true);
+
+            var localCache = new LocalCachedRepository(localPath, name, url);
+            localCache.Cache = remoteRepo.Get("packages", JsonType.Obj, true) ?? new JsonObj();
+            localCache.Repo = remoteRepo;
+            // set etag
+            if (etag != null) {
+                if (localCache.VrcGet == null)
+                    localCache.VrcGet = new VrcGetMeta();
+                localCache.VrcGet.Etag = etag;
+            }
+            PendingRepositories.Add(localCache);
+        }
+
+        public async Task SavePendingRepositories()
+        {
+            for (var i = PendingRepositories.Count - 1; i >= 0; i--)
+            {
+                var localCache = PendingRepositories[i];
+                PendingRepositories.RemoveAt(i);
+
+                var localPath = Path.Combine(GetReposDir(), $"{Guid.NewGuid()}.json");
+                await WriteRepo(localPath, localCache);
+                Debug.Assert(localCache.CreationInfo != null, "localCache.CreationInfo != null");
+                localCache.CreationInfo.LocalPath = localPath;
+                var name = localCache.CreationInfo.Name;
+                var url = localCache.CreationInfo.URL;
+                AddUserRepo(new UserRepoSetting(localPath, name, url));                
+            }
+        }
+
+        #endregion
+
         public Task AddLocalRepo([NotNull] string path, [CanBeNull] string name)
         {
             if (GetUserRepos().Any(x => x.LocalPath == path))
@@ -440,7 +490,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
     class UnityProject
     {
         private readonly string _packagesDir;
-        private readonly VpmManifest _manifest;
+        // ReSharper disable once InconsistentNaming
+        public readonly VpmManifest _manifest; // VPAI: public
         private readonly List<(string dirName, PackageJson manifest)> _unlockedPackages;
 
         private UnityProject(string packagesDir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages)
@@ -483,6 +534,21 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
 
         // no findUnityProjectPath
 
+        #region VPAI
+
+        public AddPackageStatus CheckAddPackage(PackageJson request)
+        {
+            if (_manifest.Dependencies.TryGetValue(request.Name, out var dependency) &&
+                dependency.Version >= request.Version)
+                return AddPackageStatus.AlreadyAdded;
+            if (_manifest.Locked.TryGetValue(request.Name, out var locked) && 
+                locked.Version >= request.Version)
+                return AddPackageStatus.JustAddToDependency;
+            return AddPackageStatus.InstallToLocked;
+        }
+
+        #endregion
+
         public async Task AddPackage(Environment env, PackageJson request)
         {
             if (_manifest.Dependencies.TryGetValue(request.Name, out var dependency) &&
@@ -505,13 +571,15 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
             await DoAddPackagesToLocked(env, packages);
         }
 
-        void CheckAddingPackages(IEnumerable<PackageJson> packages)
+        // VPAI: make public
+        public void CheckAddingPackages(IEnumerable<PackageJson> packages)
         {
             foreach (var package in packages)
                 CheckConflict(package.Name, package.Version);
         }
 
-        async Task DoAddPackagesToLocked(Environment env, List<PackageJson> packages)
+        // VPAI: make public
+        public async Task DoAddPackagesToLocked(Environment env, List<PackageJson> packages)
         {
             foreach (var pkg in packages)
                 _manifest.AddLocked(pkg.Name, new VpmLockedDependency(pkg.Version, pkg.VpmDependencies));
@@ -523,7 +591,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         // no Remove: VPAI only does adding package
         // no MarkAndSweep
 
-        async Task<List<PackageJson>> CollectAddingPackages(Environment env, params PackageJson[] packages)
+        // VPAI: make public
+        public async Task<List<PackageJson>> CollectAddingPackages(Environment env, params PackageJson[] packages)
         {
             var allDeps = new List<PackageJson>();
             foreach (var packageJson in packages)
@@ -659,6 +728,26 @@ namespace Anatawa12.VpmPackageAutoInstaller.VrcGet
         {
             return await repoCache.GetRepo(Path, () => throw new InvalidOperationException("unreachable"));
         }
+    }
+
+    #endregion
+
+    #region VPAI
+
+    internal class PendingSource : IRepoSource
+    {
+        [NotNull] private readonly LocalCachedRepository _source;
+
+        public PendingSource([NotNull] LocalCachedRepository source) =>
+            _source = source ?? throw new ArgumentNullException(nameof(source));
+
+        public Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache) =>
+            Task.FromResult(_source);
+    }
+
+    public enum AddPackageStatus
+    {
+        AlreadyAdded, JustAddToDependency, InstallToLocked
     }
 
     #endregion
