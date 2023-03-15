@@ -62,3 +62,24 @@ namespace UnityEditor
         public static string GetScriptingDefineSymbolsForGroup(BuildTargetGroup buildTargetGroup) => throw null;
     }
 }
+
+namespace UnityEditor.Compilation
+{
+    public class Assembly
+    {
+        public string name => throw null;
+        public Assembly[] assemblyReferences => throw null;
+    }
+
+    public static class CompilationPipeline
+    {
+        public static Assembly[] GetAssemblies(AssembliesType assembliesType) => throw null;
+    }
+
+    public enum AssembliesType
+    {
+        Editor,
+        Player,
+        PlayerWithoutTestAssemblies,
+    }
+}
