@@ -94,7 +94,19 @@ namespace Anatawa12.VrcGet
                 .Where(x => x == null)
                 .AddAllTo(userRepoFileNames);
 
-            var undefinedRepos = Directory.EnumerateFiles(reposBase)
+            IEnumerable<string> TryEnumerateFiles(string path)
+            {
+                try
+                {
+                    return Directory.EnumerateFiles(reposBase);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    return Array.Empty<string>();
+                }
+            }
+
+            var undefinedRepos = TryEnumerateFiles(reposBase)
                 .Where(x => !userRepoFileNames.Contains(x))
                 .Where(x => x.EndsWith(".json", StringComparison.Ordinal))
                 .Select(x => new UndefinedSource(Path.Combine(reposBase, x)));
@@ -855,6 +867,10 @@ namespace Anatawa12.VrcGet
                 return await Task.Run(() => File.ReadAllText(path, Encoding.UTF8));
             }
             catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (DirectoryNotFoundException)
             {
                 return null;
             }
