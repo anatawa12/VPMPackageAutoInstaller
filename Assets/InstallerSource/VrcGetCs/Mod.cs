@@ -96,7 +96,7 @@ namespace Anatawa12.VrcGet
 
             var undefinedRepos = Directory.EnumerateFiles(reposBase)
                 .Where(x => !userRepoFileNames.Contains(x))
-                .Where(x => x.EndsWith(".json"))
+                .Where(x => x.EndsWith(".json", StringComparison.Ordinal))
                 .Select(x => new UndefinedSource(Path.Combine(reposBase, x)));
 
             var definedSources = PreDefinedRepoSource.Sources;
