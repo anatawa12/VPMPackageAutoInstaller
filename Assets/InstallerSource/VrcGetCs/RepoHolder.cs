@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
@@ -15,12 +17,18 @@ namespace Anatawa12.VrcGet
         [CanBeNull] private readonly HttpClient _http;
 
         // the pointer of LocalCachedRepository will never be changed
-        [NotNull] readonly Dictionary<string, LocalCachedRepository> _cachedRepos;
+        [NotNull] readonly ConcurrentDictionary<string, Entry> _cachedRepos;
+
+        class Entry
+        {
+            public readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
+            public LocalCachedRepository Field;
+        }
 
         public RepoHolder([CanBeNull] HttpClient http)
         {
             _http = http;
-            _cachedRepos = new Dictionary<string, LocalCachedRepository>();
+            _cachedRepos = new ConcurrentDictionary<string, Entry>();
         }
 
         [ItemNotNull]
@@ -63,17 +71,37 @@ namespace Anatawa12.VrcGet
         internal async Task<LocalCachedRepository> GetRepo([NotNull] string path,
             [NotNull] Func<Task<LocalCachedRepository>> ifNotFound)
         {
-            if (_cachedRepos.TryGetValue(path, out var cached))
-                return cached;
+            var entry = _cachedRepos.GetOrAdd(path, _ => new Entry());
+            LocalCachedRepository value;
 
-            var text = await TryReadFile(path);
-            if (text == null) 
-                return _cachedRepos[path] = await ifNotFound();
-            var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
-            if (_http != null)
-                await UpdateFromRemote(_http, path, loaded);
+            // fast path: if no one is holding the semaphore and field is initialized, use it.
+            if (entry.Semaphore.CurrentCount == 1 && (value = Volatile.Read(ref entry.Field)) != null)
+                return value;
 
-            return _cachedRepos[path] = loaded;
+            await entry.Semaphore.WaitAsync();
+            try
+            {
+                if (entry.Field != null)
+                    return entry.Field;
+
+                var text = await TryReadFile(path);
+                if (text == null)
+                {
+                    value = await ifNotFound();
+                    Volatile.Write(ref entry.Field, value);
+                    return value;
+                }
+                var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
+                if (_http != null)
+                    await UpdateFromRemote(_http, path, loaded);
+
+                Volatile.Write(ref entry.Field, loaded);
+                return loaded;
+            }
+            finally
+            {
+                entry.Semaphore.Release();
+            }
         }
 
         public Task<LocalCachedRepository> GetUserRepo(UserRepoSetting repo)
