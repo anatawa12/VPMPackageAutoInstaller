@@ -302,7 +302,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             foreach (var path in removeFiles)
                 RemoveLegacyAsset(path, File.Delete);
             foreach (var path in removeFolders)
-                RemoveLegacyAsset(path, Directory.Delete);
+                RemoveLegacyAsset(path, p => Directory.Delete(p, true));
 
             ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
             ResolveUnityPackageManger();
