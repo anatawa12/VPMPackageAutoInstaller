@@ -21,7 +21,7 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.publish && "master-branch" || "" }}
+    environment: ${{ inputs.publish && 'master-branch' || '' }}
     outputs:
       version: ${{ steps.update-version.outputs.version }}
     steps:
