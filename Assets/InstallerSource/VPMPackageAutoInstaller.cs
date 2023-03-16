@@ -115,7 +115,16 @@ namespace Anatawa12.VpmPackageAutoInstaller
             EditorUtility.DisplayProgressBar("VPAI Installer", message, ratio);
         }
 
-        public static bool DoInstall0()
+
+        private static bool IsNoPrompt()
+        {
+            BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
+            BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
+            return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
+                .Contains("VPM_PACKAGE_AUTO_INSTALLER_NO_PROMPT");
+        }
+
+        public static bool DoInstall()
         {
             EditorUtility.DisplayProgressBar("VPAI Installer", "Starting Installer...", 0.0f);
             try
@@ -131,28 +140,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
             finally
             {
                 EditorUtility.ClearProgressBar();
-            }
-        }
-
-        private static bool IsNoPrompt()
-        {
-            BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
-            BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);
-            return PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup)
-                .Contains("VPM_PACKAGE_AUTO_INSTALLER_NO_PROMPT");
-        }
-
-        public static bool DoInstall()
-        {
-            try
-            {
-                return DoInstallImpl().Execute();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
-                return false;
             }
         }
 
