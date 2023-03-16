@@ -21,12 +21,14 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.publish && "master-branch" || "" }}
     outputs:
       version: ${{ steps.update-version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
         with: 
           submodules: recursive
+          token: ${{ inputs.publish && secrets.MASTER_GITHUB_PAT || github.token }}
       - uses: anatawa12/something-releaser@v2
       - uses: snow-actions/git-config-user@v1.0.0
       - name: Check version is Snapshot
