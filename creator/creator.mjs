@@ -252,7 +252,8 @@ if (typeof Deno != "undefined") {
 
   window.create = async function create() {
     try {
-      const config = document.getElementById("config").value;
+      let config = document.getElementById("config").value;
+      config = JSON.stringify(JSON.parse(config)); // minify
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([await createPackage(config)]));
       a.download = "installer.unitypackage"
