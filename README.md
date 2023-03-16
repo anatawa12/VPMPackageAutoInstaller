@@ -17,6 +17,14 @@ An experimental project to install [vpm] package published in non-official regis
 
 [download-creator-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/installer-creator.unitypackage
 
+#### Web tool
+
+1. Open website [here][creator-web]
+2. Write config.json
+3. Click `create installer`
+
+[creator-web]: https://anatawa12.github.io/VPMPackageAutoInstaller/
+
 ### Other ways
 
 <details>
@@ -28,14 +36,6 @@ An experimental project to install [vpm] package published in non-official regis
 2. Create config.json
 3. Run `node path/to/creator.mjs path/to/config.json path/to/output.unitypackage` or
     `deno run --allow-net --allow-read --allow-write path/to/creator.mjs path/to/config.json path/to/output.unitypackage`
-
-#### Web tool
-
-1. Open website [here][creator-web]
-2. Write config.json
-3. Click `create installer`
-
-[creator-web]: https://anatawa12.github.io/VPMPackageAutoInstaller/
 
 [download-creator-js-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/creator.mjs
 
