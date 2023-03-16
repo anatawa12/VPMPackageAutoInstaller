@@ -144,7 +144,7 @@ function saveOctal(buf, offset, len, value, octalLen = 0) {
   }
 }
 
-let INSTALLER_VERSION = "0.2.8";
+let INSTALLER_VERSION = "0.3.0";
 
 if (typeof Deno != "undefined") {
   //console.info("deno detected");
@@ -252,7 +252,8 @@ if (typeof Deno != "undefined") {
 
   window.create = async function create() {
     try {
-      const config = document.getElementById("config").value;
+      let config = document.getElementById("config").value;
+      config = JSON.stringify(JSON.parse(config)); // minify
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([await createPackage(config)]));
       a.download = "installer.unitypackage"
@@ -263,6 +264,8 @@ if (typeof Deno != "undefined") {
       throw e;
     }
   }
+
+  document.getElementById("vpai-version-field").textContent = `using VPAI version ${INSTALLER_VERSION}`;
 } else {
   throw new Error("unsupported runtime");
 }
