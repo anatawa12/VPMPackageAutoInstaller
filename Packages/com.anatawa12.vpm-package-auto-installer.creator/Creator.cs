@@ -92,11 +92,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 var dependencies = new Dictionary<string, string>
                     { { loaded.RootPackageJson.Name, loaded.RootPackageJson.Version } };
 
-                var legacyAssets = loaded.LegacyAssets.Count == 0
-                    ? null
-                    : loaded.LegacyAssets.ToDictionary(i => i.Path, i => i.GUID);
-
-                var configJsonObj = new CreatorConfigJson(dependencies, loaded.Repositories.ToList(), legacyAssets);
+                var configJsonObj = new CreatorConfigJson(dependencies, loaded.Repositories.ToList());
                 var configJson = JsonConvert.SerializeObject(configJsonObj);
 
                 var created = PackageCreator.CreateUnityPackage(Encoding.UTF8.GetBytes(configJson));
@@ -146,8 +142,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             var vrcPackages = VRChatPackageManager.VRChatPackages;
             var foundReposByPackage = VRChatPackageManager.CollectUserRepoForPackage();
 
-            var legacyAssets = new HashSet<LegacyInfo>();
-
             var packagesWithoutRepository = new HashSet<string>();
             var repositories = new HashSet<string>();
 
@@ -192,20 +186,12 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                     // no repositories found: add warning
                     packagesWithoutRepository.Add(srcJson.Name);
                 }
-
-                LegacyInfo MakeLegacyInfo(KeyValuePair<string, string> pair) => new LegacyInfo(pair.Key, pair.Value);
-
-                foreach (var info in srcJson.LegacyFolders?.Select(MakeLegacyInfo) ?? Enumerable.Empty<LegacyInfo>())
-                    legacyAssets.Add(info);
-                foreach (var info in srcJson.LegacyFiles?.Select(MakeLegacyInfo) ?? Enumerable.Empty<LegacyInfo>())
-                    legacyAssets.Add(info);
             }
 
             return new LoadedPackageInfo(
                 rootPackageJson: rootPackageJson,
                 repositories: repositories,
-                packagesWithoutRepository: packagesWithoutRepository,
-                legacyAssets: legacyAssets);
+                packagesWithoutRepository: packagesWithoutRepository);
         }
 
         [CanBeNull]
@@ -232,19 +218,16 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         public readonly PackageJson RootPackageJson;
         public readonly HashSet<string> Repositories;
         public readonly HashSet<string> PackagesWithoutRepository;
-        public readonly HashSet<LegacyInfo> LegacyAssets;
 
         public LoadedPackageInfo(
             PackageJson rootPackageJson,
             HashSet<string> repositories,
-            HashSet<string> packagesWithoutRepository,
-            HashSet<LegacyInfo> legacyAssets
+            HashSet<string> packagesWithoutRepository
         )
         {
             RootPackageJson = rootPackageJson;
             Repositories = repositories;
             PackagesWithoutRepository = packagesWithoutRepository;
-            LegacyAssets = legacyAssets;
         }
     }
 
@@ -453,12 +436,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         [JsonProperty("version")] public string Version;
         [JsonProperty("vpmDependencies")] public Dictionary<string, string> VpmDependencies;
         [JsonProperty("repo")] public string Repo;
-
-        [JsonProperty("legacyFolders"), CanBeNull]
-        public Dictionary<string, string> LegacyFolders;
-
-        [JsonProperty("legacyFiles"), CanBeNull]
-        public Dictionary<string, string> LegacyFiles;
     }
 #pragma warning restore CS0649
 
@@ -480,22 +457,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         public bool Equals(PackageInfo other) => Id == other.Id && Version == other.Version;
         public override bool Equals(object obj) => obj is PackageInfo other && Equals(other);
         public override int GetHashCode() => unchecked(Id.GetHashCode() * 397) ^ Version.GetHashCode();
-    }
-
-    internal struct LegacyInfo
-    {
-        [NotNull] public readonly string Path;
-        [NotNull] public readonly string GUID;
-
-        public LegacyInfo(string path, string guid)
-        {
-            Path = path;
-            GUID = guid;
-        }
-
-        public bool Equals(LegacyInfo other) => Path == other.Path && GUID == other.GUID;
-        public override bool Equals(object obj) => obj is LegacyInfo other && Equals(other);
-        public override int GetHashCode() => unchecked((Path.GetHashCode() * 397) ^ GUID.GetHashCode());
     }
 
     internal class VpmPackage
@@ -541,19 +502,13 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         // ReSharper disable once NotAccessedField.Global
         public List<string> Repositories;
 
-        [JsonProperty("legacyAssets", NullValueHandling = NullValueHandling.Ignore)]
-        // ReSharper disable once NotAccessedField.Global
-        [CanBeNull] public Dictionary<string, string> LegacyAssets;
-
         public CreatorConfigJson(
             Dictionary<string, string> dependencies,
-            List<string> repositories,
-            [CanBeNull] Dictionary<string, string> legacyAssets
+            List<string> repositories
         )
         {
             Dependencies = dependencies;
             Repositories = repositories;
-            LegacyAssets = legacyAssets;
         }
     }
 }

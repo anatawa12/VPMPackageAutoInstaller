@@ -42,9 +42,9 @@ An experimental project to install [vpm] package published in non-official regis
 #### Just create unitypackage
 
 1. Clone or [download][download-this] this project.
-2. Edit config.json at `Assets/com.anatawa12.vpm-package-auto-installer/config.json`
-3. Open this project with Unity (if you did, there's no need to relaunch)
-4. Select `Assets/com.anatawa12.vpm-package-auto-installer` in Unity's File view
+2. Execute `./Assets/InstallerSource/DllBuild\~/build-and-copy.sh` to build ths tool
+3. Edit config.json at `Assets/com.anatawa12.vpm-package-auto-installer/config.json`
+4. Open this project with Unity (if you did, there's no need to relaunch)
 5. Left-click on `Assets/com.anatawa12.vpm-package-auto-installer` and click `Export Package`
 6. un-check `Incliude dependencies` on `Exporting package` dialog.
 7. Click `Export...` and save `.unitypackage` to anywhere you want.
@@ -56,30 +56,24 @@ An experimental project to install [vpm] package published in non-official regis
 
 ## Config format
 
-```json
+```json5
 // in the config file, comment is not supported but for documentation, comment is used here.
 {
   // list of vpm repositories to be added
   // You should list up required vpm repositories for vpmDependencies and their vpmDependencies
-  // NOTICE: You should not include vrchat official or curated repositories
+  // NOTICE: You should not include vrchat official or curated repositories. 
+  //         official / curated repositories are always included in repositories
   "vpmRepositories": [
     "https://vpm.anatawa12.com/vpm.json"
   ],
   // List of dependencies to be added. Non-vpm dependencies are not supported.
   "vpmDependencies": {
-    // you may use 'x.y.z', '^x.y.z', or '~x.y.z'
+    // you can use any form of version range supported by VPM such as `^0.1.2`, `~0.1.2`, or `>=0.1.2`
     "com.anatawa12.custom-localization-for-editor-extension": "^0.2.0"
   },
-  // by default, beta releases are not allowed (except for '0.1.2-beta.4' is allowed for `~0.1.2-beta.3`)
+  // by default, beta releases are not allowed.
   // to allow all beta versions in that range, please make this true
-  "includePrerelease": false,
-  // List of folders or files will be removed just before installing the packages above
-  // just like legacyFolders / legacyFiles in VPM manifest
-  "legacyAssets": {
-    // you may use / or \\ for asset path
-    "Assets/path/of/asset": "<guid-of-asset-here>",
-    "Assets\\path\\of\\asset": "<guid-of-asset-here>"
-  }
+  "includePrerelease": false
 }
 ```
 
@@ -99,24 +93,36 @@ Here's overview of the files.
 Assets
   +- com.anatawa12.vpm-package-auto-installer - the folder for unitypackage
   |    +- config.json - the sample config file
-  |    `- VPMPackageAutoInstaller.dll (gitignored) - the compiled dll file
+  |    `- com.anatawa12.vpm-package-auto-installer.dll (gitignored) - the compiled dll file
   |
   +- InstallerSource - the folder for sorurce code of dll file
-  |    +- DllBuild~ - the dotnet sln for build `VPMPackageAutoInstaller.dll`
-  |    |   +- build-and-copy.sh - the shellscript to build `VPMPackageAutoInstaller.dll`. there's nothing complicated in this script.
+  |    +- DllBuild~ - the dotnet sln for build `com.anatawa12.vpm-package-auto-installer.dll`
+  |    |   +- build-and-copy.sh - the shellscript to build `com.anatawa12.vpm-package-auto-installer.dll`. there's nothing complicated in this script.
   |    |   |
-  |    |   +- Directory.Build.props
+  |    |   +- Directory.Build.props - global build settings
+  |    |   +- VpmPackgeAtoInstallerPrecompiled.sln - the dotnet solution files
+  |    |   |
+  |    |   +- com.anatawa12.vpm-package-auto-installer.csproj - csproj to build VPAI
+  |    |   |
   |    |   +- UnityEditor.csproj
-  |    |   +- UnityEngine.csproj
-  |    |   +- UVPMPackageAutoInstaller.csproj
-  |    |   +- VpmPackgeAtoInstallerPrecompiled.csproj - the dotnet solution files
-  |    |   |
   |    |   +- UnityEditor.Header.cs
-  |    |   `- UnityEngine.Header.cs - the fake module of UnityEngine/Editor to build `VPMPackageAutoInstaller.dll`
-  |    +- com.anatawa12.vpm-package-auto-installer.asmdef - the asmdef for build-time check
-  |    `- VpmPackageAutoInstaller.cs - the main cs file
+  |    |   +- UnityEngine.csproj
+  |    |   `- UnityEngine.Header.cs - the fake module of UnityEngine/Editor to build VPMPackageAutoInstaller
+  |    |
+  |    +- SimpleJson.cs - symlink to SimpleJson~/SimpleJson.cs
+  |    +- SimpleJson~ - git submodule https://github.com/anatawa12/SimpleJson
+  |    |
+  |    +- semver.net - symlink to semver.net~/src/SemanticVersioning
+  |    +- semver.net~ git submodule https://github.com/adamreeve/semver.net
+  |    |
+  |    +- VrcGetCs - C# reimplementation of https://github.com/anatawa12/vrc-get. see README.
+  |    |
+  |    +- com.anatawa12.vpm-package-auto-installer.source.asmdef - the asmdef for build-time check
+  |    +- BurstPatcch.cs - The patch for burst compiler warnings
+  |    |
+  |    `- VpmPackageAutoInstaller.cs - the main module of VPAI
   |
   `- Tester - the module to test vpm package auto installer. This module includes unit tests
 ```
 
-To test this package, you need to run `Assets/InstallerSource/build-and-copy.sh` to compile `VPMPackageAutoInstaller.dll`.
+To test this package, you need to run `Assets/InstallerSource/build-and-copy.sh` to compile `com.anatawa12.vpm-package-auto-installer.dll`.

@@ -28,14 +28,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
-using SemanticVersioning;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
-using Version = SemanticVersioning.Version;
 
 [assembly: InternalsVisibleTo("com.anatawa12.vpm-package-auto-installer.tester")]
 
@@ -74,16 +75,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             await Task.Delay(1);
 
-            bool installSuccessfull = false;
-            try
-            {
-                installSuccessfull = DoInstall();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
-            }
+            bool installSuccessfull = DoInstall();
 
             RemoveSelf();
 
@@ -99,6 +91,31 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 .Contains("VPM_PACKAGE_AUTO_INSTALLER_DEV_ENV");
         }
 
+        private enum Progress
+        {
+            LoadingConfigJson,
+            LoadingVpmManifestJson,
+            LoadingGlobalSettingsJson,
+            DownloadingNewRepositories,
+            DownloadingPackageInfo,
+            ResolvingDependencies,
+            CheckingInstallationInformation,
+            Prompting,
+            SavingRemoteRepositories,
+            DownloadingAndExtractingPackages,
+            SavingConfigChanges,
+            RemovingLegacyAssets,
+            RefreshingUnityPackageManger,
+            Finish
+        }
+
+        private static void ShowProgress(string message, Progress progress)
+        {
+            var ratio = (float)progress / (float)Progress.Finish;
+            EditorUtility.DisplayProgressBar("VPAI Installer", message, ratio);
+        }
+
+
         private static bool IsNoPrompt()
         {
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
@@ -109,6 +126,26 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         public static bool DoInstall()
         {
+            EditorUtility.DisplayProgressBar("VPAI Installer", "Starting Installer...", 0.0f);
+            try
+            {
+                return DoInstallImpl().Execute();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+                EditorUtility.DisplayDialog("ERROR", "Error installing packages", "ok");
+                return false;
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
+        private static async SyncedTask<bool> DoInstallImpl()
+        {
+            ShowProgress("Loading VPAI config...", Progress.LoadingConfigJson);
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
             if (string.IsNullOrEmpty(configJson))
             {
@@ -116,112 +153,171 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
-            var config = new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj);
-            var vpmManifest = VpmManifest.Load();
-            var vpmGlobalSetting = VpmGlobalSetting.Load();
+            var config =
+                new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
-            var vpmRepositories = config.Get("vpmRepositories", JsonType.List, true) ?? new List<object>();
-            var allVpmRepos = (
-                    from urlInObj in vpmRepositories
-                    let repoURL = urlInObj as string
-                    where repoURL != null
-                    select new VpmUserRepository(repoURL))
-                .ToList();
-            var vpmRepos = allVpmRepos.Where(vpmRepo => !vpmGlobalSetting.RepositoryExists(vpmRepo.Url)).ToList();
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("User-Agent",
+                "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
+                "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
+            ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
+            var env = await VrcGet.Environment.Create(client);
+            ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
+            var unityProject = await VrcGet.UnityProject.FindUnityProject(Directory.GetCurrentDirectory());
 
-            var includePrerelease = config.Get("includePrerelease", JsonType.Bool, true);
+            ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
+            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null)));
 
-            var dependencies = config.Get("vpmDependencies", JsonType.Obj, true) ?? new JsonObj();
-            var updates = (
-                    from package in dependencies.Keys
-                    let requestedVersion = dependencies.Get(package, JsonType.String)
-                    let version = ResolveVersion(package, requestedVersion, allVpmRepos, includePrerelease)
-                    where vpmManifest.Dependencies.NeedsUpdate(package, version) ||
-                          vpmManifest.Locked.NeedsUpdate(package, version)
-                    select (package, version))
-                .ToList();
+            ShowProgress("Downloading package information...", Progress.DownloadingPackageInfo);
+            var includePrerelease = config.includePrerelease;
 
-            if (updates.Count == 0)
+            var requestedPackages = await Task.WhenAll(config.VpmDependencies.Select(async kvp =>
+            {
+                var package = await env.FindPackageByName(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease))
+                    ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
+                var status = unityProject.CheckAddPackage(package);
+                return (package, status);
+            }));
+
+            ShowProgress("Downloading & Resolving dependencies information...", Progress.ResolvingDependencies);
+            List<VrcGet.PackageJson> toInstall;
+            {
+                var installRequested = requestedPackages.Where(x => x.status == VrcGet.AddPackageStatus.InstallToLocked)
+                    .Select(x => x.package).ToArray();
+                toInstall = await unityProject.CollectAddingPackages(env, installRequested);
+                toInstall.AddRange(installRequested);
+            }
+
+            ShowProgress("Checking installation information...", Progress.CheckingInstallationInformation);
+            try
+            {
+                unityProject.CheckAddingPackages(toInstall);
+            }
+            catch (VrcGet.VrcGetException e)
+            {
+                if (!IsNoPrompt())
+                    EditorUtility.DisplayDialog("ERROR!",
+                        "Installing package failed due to conflicts\n" +
+                        "Please see console for more details", "OK");
+                Debug.LogException(e);
+                return false;
+            }
+
+            if (requestedPackages.Length == 0)
             {
                 if (!IsNoPrompt())
                     EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
                 return false;
             }
 
-            var removePaths = new List<string>();
-            var legacyAssets = config.Get("legacyAssets", JsonType.Obj, true);
-            if (legacyAssets != null)
+            var removeFolders = new List<string>();
+            var removeFiles = new List<string>();
+
+            void CollectLegacyAssets(List<string> removePaths, Dictionary<string, string> mapping,
+                Func<string, bool> filter)
             {
-                foreach (var key in legacyAssets.Keys)
+                foreach (var (legacyFolder, guid) in mapping)
                 {
                     // legacyAssets may use '\\' for path separator but in unity '/' is for both windows and posix
-                    var legacyAssetPath = key.Replace('\\', '/');
+                    var legacyAssetPath = legacyFolder.Replace('\\', '/');
                     var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(legacyAssetPath);
-                    if (asset != null)
+                    if (asset != null && filter(legacyAssetPath))
                     {
                         removePaths.Add(AssetDatabase.GetAssetPath(asset));
                     }
                     else
                     {
-                        var guid = legacyAssets.Get(key, JsonType.String);
                         var path = AssetDatabase.GUIDToAssetPath(guid);
-                        if (!string.IsNullOrEmpty(path))
+                        if (!string.IsNullOrEmpty(path) && filter(legacyFolder))
                             removePaths.Add(path);
                     }
                 }
             }
 
-            var confirmMessage = "You're installing the following packages:\n";
-            confirmMessage += string.Join("\n", updates.Select(p => $"{p.package} version {p.version}"));
-
-            if (removePaths.Count != 0)
+            foreach (var packageJson in toInstall)
             {
-                confirmMessage += "\n\nYou're also deleting the following files/folders";
-                confirmMessage += string.Join("\n", removePaths);
+                CollectLegacyAssets(removeFolders, packageJson.LegacyFolders, Directory.Exists);
+                CollectLegacyAssets(removeFiles, packageJson.LegacyFiles, File.Exists);
             }
 
-            if (!IsNoPrompt() && !EditorUtility.DisplayDialog("Confirm", confirmMessage, "Install", "Cancel"))
-                return false;
-
-            foreach (var repo in vpmRepos)
-                vpmGlobalSetting.AddPackageRepository(repo);
-
-            foreach (var (key, value) in updates)
-                vpmManifest.AddPackage(key, value);
-
-            vpmGlobalSetting.Save();
-            vpmManifest.Save();
-
-            try
+            ShowProgress("Prompting to user...", Progress.Prompting);
+            if (!IsNoPrompt())
             {
-                foreach (var removePath in removePaths)
-                    if (File.Exists(removePath))
-                        File.Delete(removePath);
-                    else
-                        Directory.Delete(removePath, true);
-            }
-            catch (IOException e)
-            {
-                Debug.LogError($"error during deleting legacy: {e}");
+                var confirmMessage = new StringBuilder("You're installing the following packages:");
+
+                foreach (var (name, version) in requestedPackages.Select(x => (x.package.Name, x.package.Version))
+                             .Concat(toInstall.Select(x => (x.Name, x.Version)))
+                             .Distinct())
+                    confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
+
+                if (env.PendingRepositories.Count != 0)
+                {
+                    confirmMessage.Append("\n\nThis will add following repositories:");
+                    foreach (var localCachedRepository in env.PendingRepositories)
+                        // ReSharper disable once PossibleNullReferenceException
+                        confirmMessage.Append('\n').Append(localCachedRepository.CreationInfo.URL);
+                }
+
+                if (removeFiles.Count != 0 || removeFolders.Count != 0)
+                {
+                    confirmMessage.Append("\n\nYou're also deleting the following files/folders:");
+                    foreach (var path in removeFiles.Concat(removeFolders))
+                        confirmMessage.Append('\n').Append(path);
+                }
+
+                if (!EditorUtility.DisplayDialog("Confirm", confirmMessage.ToString(), "Install", "Cancel"))
+                    return false;
             }
 
-            VRChatPackageManager.CallResolver();
+            // user confirm got. now, edit settings
+
+            ShowProgress("Saving remote repositories...", Progress.SavingRemoteRepositories);
+            await env.SavePendingRepositories();
+
+            ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
+            foreach (var (package, status) in requestedPackages)
+                if (status != VrcGet.AddPackageStatus.AlreadyAdded)
+                    unityProject._manifest.AddDependency(package.Name, new VrcGet.VpmDependency(package.Version));
+
+            await unityProject.DoAddPackagesToLocked(env, toInstall);
+
+            ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
+            await unityProject.Save();
+            await env.Save();
+
+            void RemoveLegacyAsset(string path, Action<string> remover)
+            {
+                try
+                {
+                    remover(path);
+                }
+                catch (IOException e)
+                {
+                    Debug.LogError($"error during deleting legacy: {path}: {e}");
+                }
+            }
+
+            ShowProgress("Removing legacy folders/files...", Progress.RemovingLegacyAssets);
+
+            foreach (var path in removeFiles)
+                RemoveLegacyAsset(path, File.Delete);
+            foreach (var path in removeFolders)
+                RemoveLegacyAsset(path, p => Directory.Delete(p, true));
+
+            ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
+            ResolveUnityPackageManger();
+
+            ShowProgress("Almost done!", Progress.Finish);
             return true;
         }
 
-        private static string ResolveVersion(string package, string requestedVersion, List<VpmUserRepository> vpmRepos, 
-            bool includePrerelease)
+        internal static void ResolveUnityPackageManger()
         {
-            // it's specific version
-            if (Version.TryParse(requestedVersion, out _))
-                return requestedVersion;
-
-            var range = Range.Parse(requestedVersion);
-
-            return vpmRepos.SelectMany(repo => repo.GetVersions(package).Select(x => Version.Parse(x)))
-                .Where(v => range.IsSatisfied(v, includePrerelease: includePrerelease))
-                .Max()
-                .ToString();
+            System.Reflection.MethodInfo method = typeof(UnityEditor.PackageManager.Client).GetMethod("Resolve",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.DeclaredOnly);
+            if (method != null)
+                method.Invoke(null, null);
         }
 
         public static void RemoveSelf()
@@ -270,5 +366,136 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (asset != null) EditorUtility.SetDirty(asset);
         }
+    }
+
+    static class Extensions
+    {
+        public static void Deconstruct<TKey, TValue>(this KeyValuePair<TKey, TValue> self, out TKey key,
+            out TValue value) => (key, value) = (self.Key, self.Value);
+    }
+
+    sealed class VpaiConfig
+    {
+        public readonly string[] vpmRepositories;
+        public readonly bool includePrerelease;
+        public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
+
+        public VpaiConfig(JsonObj json)
+        {
+            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Cast<string>()?.ToArray() ??
+                              Array.Empty<string>();
+            includePrerelease = json.Get("includePrerelease", JsonType.Bool, true);
+            VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
+                                  ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
+                              ?? new Dictionary<string, VrcGet.VersionRange>();
+        }
+    }
+
+    [AsyncMethodBuilder(typeof(SyncedTask<>))]
+    public class SyncedTask<TResult>
+    {
+        private IAsyncStateMachine _stateMachine;
+        private bool _end = false;
+        private TResult _result;
+        private Exception _exception;
+
+        // block system
+        private TaskCompletionSource<bool> _blockSource;
+
+        [UsedImplicitly] // async method builder
+        public static SyncedTask<TResult> Create() => new SyncedTask<TResult>();
+
+        [UsedImplicitly] // async method builder
+        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            stateMachine.MoveNext();
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetStateMachine(IAsyncStateMachine stateMachine)
+        {
+            _stateMachine = stateMachine;
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetResult(TResult result)
+        {
+            _result = result;
+            _end = true;
+        }
+
+        [UsedImplicitly] // async method builder
+        public void SetException(Exception exception)
+        {
+            _exception = exception;
+            _end = true;
+        }
+
+        [UsedImplicitly] // async method builder
+        public SyncedTask<TResult> Task => this;
+
+        [UsedImplicitly] // async method builder
+        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
+            where TAwaiter : INotifyCompletion
+            where TStateMachine : IAsyncStateMachine
+        {
+            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
+            _blockSource = new TaskCompletionSource<bool>();
+            if (_stateMachine == null)
+            {
+                _stateMachine = stateMachine;
+                _stateMachine.SetStateMachine(_stateMachine);
+            }
+
+            SynchronizationContext.SetSynchronizationContext(null);
+            awaiter.OnCompleted(() => _blockSource.SetResult(true));
+        }
+
+        [UsedImplicitly] // async method builder
+        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter,
+            ref TStateMachine stateMachine)
+            where TAwaiter : ICriticalNotifyCompletion
+            where TStateMachine : IAsyncStateMachine
+        {
+            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
+            _blockSource = new TaskCompletionSource<bool>();
+            if (_stateMachine == null)
+            {
+                _stateMachine = stateMachine;
+                _stateMachine.SetStateMachine(_stateMachine);
+            }
+
+            SynchronizationContext.SetSynchronizationContext(null);
+            awaiter.UnsafeOnCompleted(() => _blockSource.SetResult(true));
+        }
+
+        public TResult Execute()
+        {
+            while (!_end)
+            {
+                _blockSource.Task.Wait();
+                _blockSource = null;
+                SynchronizationContext.SetSynchronizationContext(null);
+                _stateMachine.MoveNext();
+            }
+
+            if (_exception != null)
+                throw _exception;
+            return _result;
+        }
+    }
+}
+
+namespace System.Runtime.CompilerServices
+{
+    sealed class AsyncMethodBuilderAttribute : Attribute
+    {
+        public AsyncMethodBuilderAttribute(Type builderType)
+        {
+            BuilderType = builderType;
+        }
+
+        public Type BuilderType { get; }
     }
 }
