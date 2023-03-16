@@ -264,6 +264,8 @@ if (typeof Deno != "undefined") {
       throw e;
     }
   }
+
+  document.getElementById("vpai-version-field").textContent = `using VPAI version ${INSTALLER_VERSION}`;
 } else {
   throw new Error("unsupported runtime");
 }
