@@ -161,9 +161,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
                 "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
             ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
-            var env = await VrcGet.Environment.Create(client);
+            var env = await VrcGet.Environment.load_default(client);
             ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
-            var unityProject = await VrcGet.UnityProject.FindUnityProject(Directory.GetCurrentDirectory());
+            var unityProject = await VrcGet.UnityProject.find_unity_project(Directory.GetCurrentDirectory());
 
             ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
             await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null)));
@@ -173,7 +173,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             var requestedPackages = await Task.WhenAll(config.VpmDependencies.Select(async kvp =>
             {
-                var package = await env.FindPackageByName(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease))
+                var package = await env.find_package_by_name(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease))
                     ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
                 var status = unityProject.CheckAddPackage(package);
                 return (package, status);
@@ -184,14 +184,14 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 var installRequested = requestedPackages.Where(x => x.status == VrcGet.AddPackageStatus.InstallToLocked)
                     .Select(x => x.package).ToArray();
-                toInstall = await unityProject.CollectAddingPackages(env, installRequested);
+                toInstall = await unityProject.collect_adding_packages(env, installRequested);
                 toInstall.AddRange(installRequested);
             }
 
             ShowProgress("Checking installation information...", Progress.CheckingInstallationInformation);
             try
             {
-                unityProject.CheckAddingPackages(toInstall);
+                unityProject.check_adding_package(toInstall);
             }
             catch (VrcGet.VrcGetException e)
             {
@@ -236,8 +236,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             foreach (var packageJson in toInstall)
             {
-                CollectLegacyAssets(removeFolders, packageJson.LegacyFolders, Directory.Exists);
-                CollectLegacyAssets(removeFiles, packageJson.LegacyFiles, File.Exists);
+                CollectLegacyAssets(removeFolders, packageJson.legacy_folders, Directory.Exists);
+                CollectLegacyAssets(removeFiles, packageJson.legacy_files, File.Exists);
             }
 
             ShowProgress("Prompting to user...", Progress.Prompting);
@@ -245,8 +245,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 var confirmMessage = new StringBuilder("You're installing the following packages:");
 
-                foreach (var (name, version) in requestedPackages.Select(x => (x.package.Name, x.package.Version))
-                             .Concat(toInstall.Select(x => (x.Name, x.Version)))
+                foreach (var (name, version) in requestedPackages.Select(x => (Name: x.package.name, Version: x.package.version))
+                             .Concat(toInstall.Select(x => (Name: x.name, Version: x.version)))
                              .Distinct())
                     confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
 
@@ -255,7 +255,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     confirmMessage.Append("\n\nThis will add following repositories:");
                     foreach (var localCachedRepository in env.PendingRepositories)
                         // ReSharper disable once PossibleNullReferenceException
-                        confirmMessage.Append('\n').Append(localCachedRepository.CreationInfo.URL);
+                        confirmMessage.Append('\n').Append(localCachedRepository.creation_info.url);
                 }
 
                 if (removeFiles.Count != 0 || removeFolders.Count != 0)
@@ -277,13 +277,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
             foreach (var (package, status) in requestedPackages)
                 if (status != VrcGet.AddPackageStatus.AlreadyAdded)
-                    unityProject._manifest.AddDependency(package.Name, new VrcGet.VpmDependency(package.Version));
+                    unityProject._manifest.add_dependency(package.name, new VrcGet.VpmDependency(package.version));
 
-            await unityProject.DoAddPackagesToLocked(env, toInstall);
+            await unityProject.do_add_packages_to_locked(env, toInstall);
 
             ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
-            await unityProject.Save();
-            await env.Save();
+            await unityProject.save();
+            await env.save();
 
             void RemoveLegacyAsset(string path, Action<string> remover)
             {

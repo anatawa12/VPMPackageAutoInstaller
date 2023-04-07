@@ -1,3 +1,5 @@
+// ReSharper disable InconsistentNaming
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,10 +16,10 @@ namespace Anatawa12.VrcGet
 {
     class RepoHolder
     {
-        [CanBeNull] private readonly HttpClient _http;
+        [CanBeNull] private readonly HttpClient http;
 
         // the pointer of LocalCachedRepository will never be changed
-        [NotNull] readonly ConcurrentDictionary<string, Entry> _cachedRepos;
+        [NotNull] readonly ConcurrentDictionary<string, Entry> cached_repos;
 
         class Entry
         {
@@ -27,35 +29,35 @@ namespace Anatawa12.VrcGet
 
         public RepoHolder([CanBeNull] HttpClient http)
         {
-            _http = http;
-            _cachedRepos = new ConcurrentDictionary<string, Entry>();
+            this.http = http;
+            cached_repos = new ConcurrentDictionary<string, Entry>();
         }
 
         [ItemNotNull]
-        public async Task<LocalCachedRepository> GetOrCreateRepo(
+        public async Task<LocalCachedRepository> get_or_create_repo(
             [NotNull] string path,
             [NotNull] string remoteUrl,
             [CanBeNull] string name)
         {
-            return await GetRepo(path, async () =>
+            return await get_repo(path, async () =>
             {
-                var http = _http ?? throw new IOException("offline mode");
-                var result = await DownloadRemoteRepository(http, remoteUrl, null);
+                var http = this.http ?? throw new IOException("offline mode");
+                var result = await download_remote_repository(http, remoteUrl, null);
                 System.Diagnostics.Debug.Assert(result != null, nameof(result) + " != null: no etag");
                 var (remoteRepo, etag) = result.Value;
                 var localCache = new LocalCachedRepository(path, name, remoteUrl);
-                localCache.Cache = remoteRepo.Get("packages", JsonType.Obj, true);
-                localCache.Repo = remoteRepo;
+                localCache.cache = remoteRepo.Get("packages", JsonType.Obj, true);
+                localCache.repo = remoteRepo;
 
                 if (etag != null)
                 {
-                    localCache.VrcGet = localCache.VrcGet ?? new VrcGetMeta();
-                    localCache.VrcGet.Etag = etag;
+                    localCache.vrc_get = localCache.vrc_get ?? new VrcGetMeta();
+                    localCache.vrc_get.etag = etag;
                 }
 
                 try
                 {
-                    await WriteRepo(path, localCache);
+                    await write_repo(path, localCache);
                 }
                 catch (Exception e)
                 {
@@ -68,10 +70,10 @@ namespace Anatawa12.VrcGet
         }
 
         [ItemNotNull]
-        internal async Task<LocalCachedRepository> GetRepo([NotNull] string path,
+        internal async Task<LocalCachedRepository> get_repo([NotNull] string path,
             [NotNull] Func<Task<LocalCachedRepository>> ifNotFound)
         {
-            var entry = _cachedRepos.GetOrAdd(path, _ => new Entry());
+            var entry = cached_repos.GetOrAdd(path, _ => new Entry());
             LocalCachedRepository value;
 
             // fast path: if no one is holding the semaphore and field is initialized, use it.
@@ -92,8 +94,8 @@ namespace Anatawa12.VrcGet
                     return value;
                 }
                 var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
-                if (_http != null)
-                    await UpdateFromRemote(_http, path, loaded);
+                if (http != null)
+                    await update_from_remote(http, path, loaded);
 
                 Volatile.Write(ref entry.Field, loaded);
                 return loaded;
@@ -104,15 +106,15 @@ namespace Anatawa12.VrcGet
             }
         }
 
-        public Task<LocalCachedRepository> GetUserRepo(UserRepoSetting repo)
+        public Task<LocalCachedRepository> get_user_repo(UserRepoSetting repo)
         {
-            if (repo.URL is string url)
+            if (repo.url is string url)
             {
-                return GetOrCreateRepo(repo.LocalPath, url, repo.Name);
+                return get_or_create_repo(repo.local_path, url, repo.name);
             }
             else
             {
-                return GetRepo(repo.LocalPath, () => throw new IOException("Repository not found"));
+                return get_repo(repo.local_path, () => throw new IOException("Repository not found"));
             }
         }
     }
