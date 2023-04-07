@@ -788,12 +788,12 @@ namespace Anatawa12.VrcGet
                     break;
                 case FoundFile:
                     path = value.strip_prefix(project_dir);
-                    Debug.Assert(path != null);
+                    System.Diagnostics.Debug.Assert(path != null, "path != null");
                     found_files.Add(path);
                     break;
                 case FoundFolder:
                     path = value.strip_prefix(project_dir);
-                    Debug.Assert(path != null);
+                    System.Diagnostics.Debug.Assert(path != null, "path != null");
                     found_folders.Add(path);
                     break;
                 case GuidFile:
@@ -861,7 +861,7 @@ namespace Anatawa12.VrcGet
 
                 find_guids.Remove(guid);
                 path = path.strip_prefix(project_dir);
-                Debug.Assert(path != null);
+                System.Diagnostics.Debug.Assert(path != null, "path != null");
                 if (is_file) {
                     found_files.Add(path);
                 } else {
@@ -893,7 +893,7 @@ namespace Anatawa12.VrcGet
                 }
                 catch (IOException e)
                 {
-                    Debug.LogError($"removing legacy asset at {base_path}: e");
+                    Debug.LogError($"removing legacy asset at {base_path}: {e}");
                 }
             }
 
@@ -904,7 +904,7 @@ namespace Anatawa12.VrcGet
                 }
                 catch (IOException e)
                 {
-                    Debug.LogError($"removing legacy asset at {path}: e");
+                    Debug.LogError($"removing legacy asset at {path}: {e}");
                 }
                 await remove_meta_file(path);
             }
@@ -916,7 +916,7 @@ namespace Anatawa12.VrcGet
                 }
                 catch (IOException e)
                 {
-                    Debug.LogError($"removing legacy asset at {path}: e");
+                    Debug.LogError($"removing legacy asset at {path}: {e}");
                 }
                 await remove_meta_file(path);
             }
