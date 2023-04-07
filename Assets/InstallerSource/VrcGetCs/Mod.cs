@@ -807,61 +807,16 @@ namespace Anatawa12.VrcGet
 
         if (find_guids.len() != 0) {
             // walk dir
+            // VPAI: use AssetDatabase API here.
 
-            IEnumerable<(string, bool, string)> FindMetaFiles(string dir)
+            foreach (var (guid, is_file) in find_guids)
             {
-                foreach (var meta_file in Directory.GetFiles(dir, "*.meta", SearchOption.AllDirectories))
-                {
-                    string guid_line = File.ReadLines(meta_file).FirstOrDefault(x => x.StartsWith("guid: ", StringComparison.Ordinal));
-                    if (guid_line == null) continue;
+                var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path)) continue;
 
-                    var guid = guid_line.Substring("guid: ".Length).Trim();
-                    if (!is_guid(guid)) continue;
-
-                    var path = meta_file.Substring(0, meta_file.Length - ".meta".Length);
-
-                    var file_exists = File.Exists(path);
-                    var dir_exists = Directory.Exists(path);
-
-                    if (!file_exists && !dir_exists) continue;
-
-                    yield return (guid, file_exists, path);
-                }
-            }
-
-            var meta_files = await Task.Run(() =>
-                Directory.GetFiles(Path.Combine(project_dir, "Packages"), "*.meta", SearchOption.AllDirectories)
-                    .Concat(Directory.GetFiles(Path.Combine(project_dir, "Assets"), "*.meta",
-                        SearchOption.AllDirectories)));
-
-            var tuples = await Task.WhenAll(meta_files.Select(async meta_file =>
-            {
-                string guid_line = await Task.Run(() => File.ReadLines(meta_file).FirstOrDefault(x => x.StartsWith("guid: ", StringComparison.Ordinal)));
-                if (guid_line == null) return null;
-
-                var guid = guid_line.Substring("guid: ".Length).Trim();
-                if (!is_guid(guid)) return null;
-
-                var path = meta_file.Substring(0, meta_file.Length - ".meta".Length);
-
-                var (file_exists, dir_exists) = await Task.Run(() => (File.Exists(path), Directory.Exists(path)));
-
-                if (!file_exists && !dir_exists) return null;
-
-                return (guid, file_exists, path) as (string, bool, string)?;
-            }));
-
-            foreach (var mayNull in tuples)
-            {
-                if (mayNull == null) continue;
-                var (guid, is_file_actual, path) = mayNull.Value;
-
-                if (!find_guids.TryGetValue(guid, out var is_file)) continue;
+                var is_file_actual = File.Exists(path);
                 if (is_file_actual != is_file) continue;
 
-                find_guids.Remove(guid);
-                path = path.strip_prefix(project_dir);
-                System.Diagnostics.Debug.Assert(path != null, "path != null");
                 if (is_file) {
                     found_files.Add(path);
                 } else {
