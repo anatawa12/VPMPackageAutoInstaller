@@ -6,6 +6,8 @@ using System.Linq;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
 using Version = SemanticVersioning.Version;
+// ReSharper disable ArrangeThisQualifier
+// ReSharper disable LocalVariableHidesMember
 
 namespace Anatawa12.VrcGet
 {
@@ -76,8 +78,8 @@ namespace Anatawa12.VrcGet
         [NotNull] public Version version { get; }
         [NotNull] public string url { get; }
         [NotNull] public Dictionary<string, VersionRange> vpm_dependencies { get; }
-        [NotNull] public Dictionary<string, string> legacy_folders { get; } // VPAI
-        [NotNull] public Dictionary<string, string> legacy_files { get; } // VPAI
+        [NotNull] public Dictionary<string, string> legacy_folders { get; }
+        [NotNull] public Dictionary<string, string> legacy_files { get; }
 
         public PackageJson(JsonObj json)
         {
@@ -88,14 +90,12 @@ namespace Anatawa12.VrcGet
             vpm_dependencies = Json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VersionRange>();
-            // begin VPAI
             legacy_folders = Json.Get("legacyFolders", JsonType.Obj, true)
                                 ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
                             ?? new Dictionary<string, string>();
             legacy_files = Json.Get("legacyFiles", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
                               ?? new Dictionary<string, string>();
-            // end VPAI 
         }
     }
 
@@ -108,12 +108,16 @@ namespace Anatawa12.VrcGet
         [NotNull] public string local_path { get; set; }
         [CanBeNull] public string name { get; set; }
         [CanBeNull] public string url { get; set; }
+        [CanBeNull] public string id { get; set; }
+        [NotNull] public Dictionary<string, string> headers { get; set; }
 
-        public UserRepoSetting([NotNull] string localPath, [CanBeNull] string name, [CanBeNull] string url)
+        public UserRepoSetting([NotNull] string localPath, [CanBeNull] string name, [CanBeNull] string url, string id)
         {
             local_path = localPath ?? throw new ArgumentNullException(nameof(localPath));
             this.name = name;
             this.url = url;
+            this.id = id;
+            this.headers = new Dictionary<string, string>();
         }
 
         public UserRepoSetting(JsonObj json)
@@ -121,6 +125,8 @@ namespace Anatawa12.VrcGet
             local_path = json.Get("localPath", JsonType.String);
             name = json.Get("name", JsonType.String, true);
             url = json.Get("url", JsonType.String, true);
+            id = json.Get("id", JsonType.String, true);
+            headers = JsonUtils.ToDictionary(json.Get("versions", JsonType.Obj, true), x => (string)x);
         }
 
         public JsonObj ToJson()
@@ -135,111 +141,52 @@ namespace Anatawa12.VrcGet
 
     #endregion
 
-    #region repository
+    #region repo_cache
 
     class LocalCachedRepository
     {
         // for vrc-get cache compatibility, this doesn't keep original json
-        [CanBeNull] public JsonObj repo { get; set; }
-        [NotNull] public JsonObj cache { get; set; }
-        [CanBeNull] public CreationInfo creation_info { get; }
-        [CanBeNull] public Description description { get; }
+        [NotNull] Repository _repo { get; set; }
+        [NotNull] Dictionary<string, string> _headers { get; set; }
         [CanBeNull] public VrcGetMeta vrc_get { get; set; }
 
         public LocalCachedRepository(JsonObj json)
         {
-            repo = json.Get("repo", JsonType.Obj, true);
-            cache = json.Get("cache", JsonType.Obj, true) ?? new JsonObj();
-            creation_info = json.Get("CreationInfo", JsonType.Obj, true) is JsonObj creationInfo
-                ? new CreationInfo(creationInfo)
-                : null;
-            this.description = json.Get("Description", JsonType.Obj, true) is JsonObj description
-                ? new Description(description)
-                : null;
-            vrc_get = json.Get("vrc-get", JsonType.Obj, true) is JsonObj vrcGetMeta
-                ? new VrcGetMeta(vrcGetMeta)
-                : null;
+            _repo = new Repository(json.Get("repo", JsonType.Obj, true));
+            _headers = JsonUtils.ToDictionary(json.Get("versions", JsonType.Obj, true), x => (string)x);
+            vrc_get = json.Get("vrc-get", JsonType.Obj, true) is JsonObj vrcGetMeta ? new VrcGetMeta(vrcGetMeta) : null;
         }
 
-        public LocalCachedRepository([NotNull] string path, [CanBeNull] string name, [CanBeNull] string url)
+        public LocalCachedRepository([NotNull] Repository repo, [NotNull] Dictionary<string, string> headers)
         {
-            repo = null;
-            cache = new JsonObj();
-            creation_info = new CreationInfo
-            {
-                local_path = path,
-                url = url,
-                name = name,
-            };
-            description = new Description
-            {
-                name = name,
-                type = "JsonRepo",
-            };
+            this._repo = repo ?? throw new ArgumentNullException(nameof(repo));
+            this._headers = headers ?? throw new ArgumentNullException(nameof(headers));
             vrc_get = null;
         }
 
         public JsonObj ToJson()
         {
             var result =  new JsonObj();
-            if (repo != null) result.Add("repo", repo);
-            if (cache.Count != 0) result.Add("cache", cache);
-            if (creation_info != null) result.Add("CreationInfo", creation_info.ToJson());
-            if (description != null) result.Add("Description", description.ToJson());
+            result.Add("repo", _repo.ToJson());
             if (vrc_get != null) result.Add("vrc-get", vrc_get.ToJson());
             return result;
         }
-    }
 
-    class CreationInfo
-    {
-        [CanBeNull] public string local_path { get; set; }
-        [CanBeNull] public string url { get; set; }
-        [CanBeNull] public string name { get; set; }
+        [NotNull] public Dictionary<string, string> headers() => this._headers;
+        [NotNull] public Repository repo() => this._repo;
 
-        public CreationInfo()
+        public void set_repo(Repository repo)
         {
+            if (this.id() is string id) repo.set_id_if_none(id);
+            if (this.url() is string url) repo.set_url_if_none(url);
+            this._repo = repo;
         }
 
-        public CreationInfo(JsonObj creationInfo)
-        {
-            local_path = creationInfo.Get("localPath", JsonType.String, true);
-            url = creationInfo.Get("url", JsonType.String, true);
-            name = creationInfo.Get("name", JsonType.String, true);
-        }
-
-        public JsonObj ToJson()
-        {
-            var result =  new JsonObj();
-            if (local_path != null) result.Add("localPath", local_path);
-            if (url != null) result.Add("url", url);
-            if (name != null) result.Add("name", name);
-            return result;
-        }
-    }
-
-    class Description
-    {
-        [CanBeNull] public string name { get; set; }
-        [CanBeNull] public string type { get; set; }
-
-        public Description()
-        {
-        }
-
-        public Description(JsonObj description)
-        {
-            name = description.Get("name", JsonType.String, true);
-            type = description.Get("type", JsonType.String, true);
-        }
-
-        public JsonObj ToJson()
-        {
-            var result =  new JsonObj();
-            if (name != null) result.Add("name", name);
-            if (type != null) result.Add("type", type);
-            return result;
-        }
+        [CanBeNull] public string url() => repo().url();
+        [CanBeNull] public string id() => repo().id();
+        [CanBeNull] public string name() => repo().name();
+        [NotNull] public IEnumerable<PackageJson> get_version_of(string package) => repo().get_versions_of(package);
+        [CanBeNull] public IEnumerable<PackageVersions> get_packages() => repo().get_packages();
     }
 
     class VrcGetMeta
@@ -265,7 +212,73 @@ namespace Anatawa12.VrcGet
 
     #endregion
 
-    #region remote_repo
+    #region repository
+
+    class Repository
+    {
+        private JsonObj actual;
+        private ParsedRepository parsed;
+        
+        public Repository(JsonObj cache)
+        {
+            this.parsed = new ParsedRepository(cache);
+            this.actual = cache;
+        }
+
+        public void set_id_if_none(string value){
+            if (this.parsed.id == null) {
+                this.parsed.id = value;
+                this.actual.Put("id", value, JsonType.String);
+            }
+        }
+
+        public void set_url_if_none(string value){
+            if (this.parsed.url == null) {
+                this.parsed.url = value;
+                this.actual.Put("url", value, JsonType.String);
+                set_id_if_none(value);
+            }
+        }
+
+        [CanBeNull] public string url() => this.parsed.url;
+
+        [CanBeNull] public string id() => this.parsed.id;
+
+        [CanBeNull] public string name() => this.parsed.name;
+
+        [NotNull]
+        public IEnumerable<PackageJson> get_versions_of(string package) {
+            this.parsed.packages.TryGetValue(package, out var value);
+            if (value == null) return Array.Empty<PackageJson>();
+            return value.versions.Values;
+        }
+
+        public IEnumerable<PackageVersions> get_packages()
+        {
+            return this.parsed.packages.Values;
+        }
+
+        public JsonObj ToJson()
+        {
+            return actual;
+        }
+
+        struct ParsedRepository {
+            [CanBeNull] public string name;
+            [CanBeNull] public string url;
+            [CanBeNull] public string id;
+            [NotNull] public Dictionary<String, PackageVersions> packages;
+
+            public ParsedRepository(JsonObj json)
+            {
+                this.name = json.Get("name", JsonType.String, true);
+                this.url = json.Get("url", JsonType.String, true);
+                this.id = json.Get("id", JsonType.String, true);
+                this.packages = JsonUtils.ToDictionary(json.Get("packages", JsonType.Obj, true),
+                    x => new PackageVersions((JsonObj)x));
+            }
+        }
+    }
 
     class PackageVersions
     {
@@ -290,4 +303,16 @@ namespace Anatawa12.VrcGet
     }
 
     #endregion
+
+    static class JsonUtils
+    {
+        public static Dictionary<string, T> ToDictionary<T>(JsonObj obj, Func<object, T> parser)
+        {
+            var result = new Dictionary<string, T>();
+            if (obj != null)
+                foreach (var (key, value) in obj)
+                    result[key] = parser(value);
+            return result;
+        }
+    }
 }

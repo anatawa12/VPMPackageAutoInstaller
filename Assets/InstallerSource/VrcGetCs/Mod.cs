@@ -1,38 +1,40 @@
 // ReSharper disable InconsistentNaming
+// ReSharper disable ArrangeThisQualifier
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
+using UnityEngine;
 using static Anatawa12.VrcGet.ModStatics;
-using Debug = UnityEngine.Debug;
 using Version = SemanticVersioning.Version;
+// ReSharper disable ParameterHidesMember
 
 namespace Anatawa12.VrcGet
 {
-    class Environment
+    sealed partial class Environment
     {
         [CanBeNull] private readonly HttpClient http;
         [NotNull] private readonly string global_dir;
         [NotNull] private readonly JsonObj settings;
         [NotNull] private readonly RepoHolder repo_cache;
-        [NotNull] public readonly List<LocalCachedRepository> PendingRepositories = new List<LocalCachedRepository>(); // VPAI
+        [NotNull] private readonly List<(string, PackageJson)> user_packages;
+        [NotNull] public readonly List<(string path, string url)> PendingRepositories = new List<(string, string)>(); // VPAI
         private bool settings_changed;
 
-        private Environment([CanBeNull] HttpClient http, [NotNull] string globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, bool settingsChanged)
+        private Environment([CanBeNull] HttpClient http, [NotNull] string globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, List<(string, PackageJson)> userPackages, bool settingsChanged)
         {
             this.http = http;
             global_dir = globalDir;
             this.settings = settings;
             repo_cache = repoCache;
+            user_packages = userPackages;
             settings_changed = settingsChanged;
         }
 
@@ -50,26 +52,72 @@ namespace Anatawa12.VrcGet
                 settings: await load_json_or_default(Path.Combine(folder, "settings.json"), x => x),
                 globalDir: folder,
                 repoCache: new RepoHolder(http),
+                userPackages: new List<(string, PackageJson)>(),
                 settingsChanged: false
             );
         }
 
+        public async Task load_package_infos()
+        {
+            await this.repo_cache.load_repos(await this.get_repo_sources());
+            this.update_user_repo_id();
+            await this.load_user_package_infos();
+        }
+
+        void update_user_repo_id() {
+            var user_repos = this.get_user_repos();
+            if (user_repos.len() == 0)
+                return;
+
+            var json = this.settings.Get("userRepos", JsonType.List);
+
+            // update id field
+            for (var i = 0; i < user_repos.Count; i++)
+            {
+                var repo = user_repos[i];
+                var loaded = this.repo_cache.get_repo(repo.local_path);
+                System.Diagnostics.Debug.Assert(loaded != null, nameof(loaded) + " != null");
+                var id = loaded.id();
+                if (id != repo.id) {
+                    repo.id = id;
+
+                    json[i] = repo.ToJson();
+                    this.settings_changed = true;
+                }
+            }
+        }
+
+        async Task load_user_package_infos()
+        {
+            var self = this;
+            self.user_packages.Clear();
+            foreach (var x in self.get_user_package_folders())
+            {
+                var package_json = await load_json_or_else(Path.Combine(x, "package.json"), y => new PackageJson(y),
+                    () => null);
+                if (package_json != null)
+                {
+                    self.user_packages.Add((x, package_json));
+                }
+            }
+        }
+
+
         [NotNull]
         public string get_repos_dir() => Path.Combine(global_dir, "Repos");
 
-        [ItemCanBeNull]
-        public async Task<PackageJson> find_package_by_name([NotNull] string package, VersionSelector version)
+        public PackageInfo? find_package_by_name([NotNull] string package, VersionSelector version)
         {
-            var versions = await find_packages(package);
+            var versions = find_packages(package);
 
-            versions.RemoveAll(x => !version(x.version));
-            versions.Sort((x, y) => y.version.CompareTo(x.version));
+            versions.RemoveAll(x => !version(x.version()));
+            versions.Sort((x, y) => y.version().CompareTo(x.version()));
 
-            return versions.Count != 0 ? versions[0] : null;
+            return versions.Count != 0 ? versions[0] as PackageInfo? : null;
         }
 
         [ItemNotNull]
-        public async Task<List<IRepoSource>> get_repo_sources()
+        public async Task<List<RepoSource>> get_repo_sources()
         {
             // collect user repositories
             var reposBase = get_repos_dir();
@@ -112,46 +160,36 @@ namespace Anatawa12.VrcGet
                 .Where(x => x.EndsWith(".json", StringComparison.Ordinal))
                 .Select(x => new UndefinedSource(Path.Combine(reposBase, x)));
 
-            var definedSources = PreDefinedRepoSource.Sources;
+            var definedSources = PreDefinedRepoSource.Sources.Select(x =>
+                new PreDefinedRepoSource(x, Path.Combine(this.get_repos_dir(), x.file_name)));
             var userRepoSources = userRepos.Select(x => new UserRepoSource(x));
-            var pendingRepoSources = PendingRepositories.Select(x => new PendingSource(x)); // VPAI
 
             return await Task.Run(() =>
-                undefinedRepos.Concat<IRepoSource>(definedSources).Concat(userRepoSources).Concat(pendingRepoSources).ToList());
+                undefinedRepos.Concat<RepoSource>(definedSources).Concat(userRepoSources).ToList());
         }
 
         [ItemNotNull]
-        public async Task<List<LocalCachedRepository>> get_repos()
-        {
-            return (await Task.WhenAll((await get_repo_sources()).Select(get_repo))).ToList();
-        }
+        public LocalCachedRepository[] get_repos() => repo_cache.get_repos();
 
         [ItemNotNull]
-        public Task<LocalCachedRepository> get_repo(IRepoSource source)
-        {
-            return source.GetRepo(this, repo_cache);
-        }
+        public IEnumerable<(string, LocalCachedRepository)> get_repo_with_path() => repo_cache.get_repo_with_path();
 
 
         [ItemNotNull]
-        public async Task<List<PackageJson>> find_packages([NotNull] string package)
+        public List<PackageInfo> find_packages([NotNull] string package)
         {
-            var list = new List<PackageJson>();
+            var list = new List<PackageInfo>();
 
-            (await get_repos())
-                .Select(repo => repo.cache.Get(package, JsonType.Obj, true))
-                .Where(x => x != null)
-                .Select(json => new PackageVersions(json))
-                .SelectMany(x => x.versions.Values)
-                .AddAllTo(list);
+            list.AddRange(
+                this.get_repos()
+                    .SelectMany(repo => repo.get_version_of(package).Select(pkg => (pkg, repo)))
+                    .Select((pair) => PackageInfo.remote(pair.pkg, pair.repo)));
 
             // user package folders
-            foreach (var x in get_user_package_folders())
+            foreach (var (path, package_json) in this.user_packages)
             {
-                var packageJson =
-                    await load_json_or_else(Path.Combine(x, "package.json"), y => new PackageJson(y), () => null);
-                if (packageJson != null && packageJson.name == package) {
-                    list.Add(packageJson);
+                if (package_json.name == package) {
+                    list.Add(PackageInfo.local(package_json, path));
                 }
             }
 
@@ -159,7 +197,7 @@ namespace Anatawa12.VrcGet
         }
         
         [ItemNotNull]
-        public async Task<List<PackageJson>> find_whole_all_packages([NotNull] Func<PackageJson, bool> filter)
+        public List<PackageJson> find_whole_all_packages([NotNull] Func<PackageJson, bool> filter)
         {
             var list = new List<PackageJson>();
 
@@ -171,21 +209,17 @@ namespace Anatawa12.VrcGet
                     .Where(x => !x.version.IsPreRelease)
                     .MaxBy(x => x.version);
 
-            (await get_repos())
-                .SelectMany(x => x.cache.Select(y => y.Item2))
-                .Select(x => new PackageVersions((JsonObj)x))
-                .Select(GetLatest)
-                .Where(x => x != null)
-                .Where(filter)
+            this.get_repos()
+                    .SelectMany(repo => repo.get_packages())
+                    .Select(GetLatest)
+                    .Where(x => x != null)
+                    .Where(filter)
                 .AddAllTo(list);
 
             // user package folders
-            foreach (var x in get_user_package_folders())
-            {
-                var packageJson = await load_json_or_else(Path.Combine(x, "package.json"), y => new PackageJson(y), () => null);
-                if (packageJson != null && filter(packageJson))
-                {
-                    list.Add(packageJson);
+            foreach (var (_, package_json) in this.user_packages) {
+                if (!package_json.version.IsPreRelease && filter(package_json)) {
+                    list.Add(package_json);
                 }
             }
 
@@ -194,126 +228,9 @@ namespace Anatawa12.VrcGet
             return list.DistinctBy(x => (Name: x.name, Version: x.version)).ToList();
         }
 
-        public async Task add_package([NotNull] PackageJson package, [NotNull] string targetPackagesFolder)
+        public async Task add_package([NotNull] PackageInfo package, [NotNull] string target_packages_folder)
         {
-            var zipFileName = $"vrc-get-{package.name}-{package.version}.zip";
-            var zipPath = Path.Combine(get_repos_dir(), package.name, zipFileName);
-            Directory.CreateDirectory(Path.Combine(get_repos_dir(), package.name));
-            var shaPath = Path.Combine(get_repos_dir(), package.name, $"{zipFileName}.sha256");
-            var destDir = Path.Combine(targetPackagesFolder, package.name);
-
-            //[CanBeNull]
-            byte[] ParseHex(/*[NotNull]*/ byte[] hex)
-            {
-                byte ParseChar(byte c)
-                {
-                    if ('0' <= c && c <= '9') return (byte)(c - '0');
-                    if ('a' <= c && c <= 'f') return (byte)(c - 'a' + 10);
-                    if ('A' <= c && c <= 'F') return (byte)(c - 'A' + 10);
-                    return 255;
-                }
-                var result = new byte[hex.Length / 2];
-                for (var i = 0; i < result.Length; i++)
-                {
-                    var upper = ParseChar(hex[i * 2 + 0]);
-                    var lower = ParseChar(hex[i * 2 + 0]);
-                    if (upper == 255 || lower == 255) return null;
-                    result[i] = (byte)(upper << 4 | lower);
-                }
-                return result;
-            }
-
-            //[NotNull]
-            string ToHex(/*[NotNull] */byte[] data) {
-                var result = new char[data.Length * 2];
-                for (var i = 0; i < data.Length; i++)
-                {
-                    result[i * 2 + 0] = "0123456789abcdef"[(data[i] >> 4) & 0xf];
-                    result[i * 2 + 1] = "0123456789abcdef"[(data[i] >> 0) & 0xf];
-                }
-
-                return new string(result);
-            }
-
-            async Task<FileStream> TryCache(/*string zipPath, string shaPath*/)
-            {
-                FileStream result = null;
-                FileStream cacheFile = null;
-                try
-                {
-                    cacheFile = File.OpenRead(zipPath);
-                    using (var shaFile = File.OpenRead(shaPath))
-                    {
-                        var shaBuffer = new byte[256 / 8];
-                        await shaFile.ReadExactAsync(shaBuffer);
-                        var hex = ParseHex(shaBuffer);
-
-                        byte[] hash;
-
-                        using (var sha256 = SHA256.Create()) hash = sha256.ComputeHash(cacheFile);
-
-                        if (!hash.SequenceEqual(hex)) return null;
-
-                        cacheFile.Seek(0, SeekOrigin.Begin);
-                        return result = cacheFile;
-                    }
-                }
-                catch
-                {
-                    return null;
-                }
-                finally
-                {
-                    if (cacheFile != null && cacheFile != result)
-                        cacheFile.Dispose();
-                }
-            }
-
-            var zipFile = await TryCache();
-            try
-            {
-                if (zipFile == null)
-                {
-                    if (http == null)
-                        throw new IOException("Offline mode");
-
-                    zipFile = File.Open(zipPath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
-                    zipFile.Position = 0;
-
-                    var response = await http.GetAsync(package.url, HttpCompletionOption.ResponseHeadersRead);
-                    response.EnsureSuccessStatusCode();
-
-                    var responseStream = await response.Content.ReadAsStreamAsync();
-
-                    await responseStream.CopyToAsync(zipFile);
-
-                    await zipFile.FlushAsync();
-                    zipFile.Position = 0;
-
-                    byte[] hash;
-                    using (var sha256 = SHA256.Create()) hash = sha256.ComputeHash(zipFile);
-                    zipFile.Position = 0;
-
-                    // write SHA file
-                    File.WriteAllText(shaPath, $"{ToHex(hash)} {zipFileName}\n");
-                }
-
-                try
-                {
-                    Directory.Delete(destDir);
-                }
-                catch
-                {
-                    //ignored
-                }
-
-                using (var archive = new ZipArchive(zipFile, ZipArchiveMode.Read, false))
-                    archive.ExtractToDirectory(destDir);
-            }
-            finally
-            {
-                zipFile?.Dispose();
-            }
+            await AddPackage.add_package(this.global_dir, this.http, package, target_packages_folder);
         }
 
 
@@ -337,7 +254,7 @@ namespace Anatawa12.VrcGet
             settings_changed = true;
         }
 
-        public async Task add_remote_repo([NotNull] string url, [CanBeNull] string name)
+        public async Task add_remote_repo([NotNull] string url, [CanBeNull] string name, [CanBeNull] Dictionary<string, string> headers)
         {
             if (get_user_repos().Any(x => x.url == url))
                 throw new VrcGetException("Already Added");
@@ -345,87 +262,274 @@ namespace Anatawa12.VrcGet
                 throw new OfflineModeException();
 
 
-            var response = await download_remote_repository(http, url, null);
+            var response = await download_remote_repository(http, url, headers, null);
             Debug.Assert(response != null, nameof(response) + " != null");
-            var (remoteRepo, etag) = response.Value;
+            var (remote_repo, etag) = response.Value;
             var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
 
-            if (name == null)
-                name = remoteRepo.Get("name", JsonType.String, true);
+            var repo_name = name ?? remote_repo.name();
+            var repo_id = remote_repo.id();
 
-            
-            var localCache = new LocalCachedRepository(localPath, name, url);
-            localCache.cache = remoteRepo.Get("packages", JsonType.Obj, true) ?? new JsonObj();
-            localCache.repo = remoteRepo;
+            if (get_user_repos().Any(x => x.id == repo_id))
+                throw new VrcGetException("Already Added");
+
+            var local_cache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
             // set etag
             if (etag != null) {
-                if (localCache.vrc_get == null)
-                    localCache.vrc_get = new VrcGetMeta();
-                localCache.vrc_get.etag = etag;
+                if (local_cache.vrc_get == null)
+                    local_cache.vrc_get = new VrcGetMeta();
+                local_cache.vrc_get.etag = etag;
             }
-            await write_repo(localPath, localCache);
+            await write_repo(localPath, local_cache);
 
-            add_user_repo(new UserRepoSetting(localPath, name, url));
+            add_user_repo(new UserRepoSetting(localPath, repo_name, url, repo_id));
         }
 
         #region VPAI
 
-        public async Task AddPendingRepository([NotNull] string url, [CanBeNull] string name)
+        public async Task AddPendingRepository([NotNull] string url, [CanBeNull] string name, [CanBeNull] Dictionary<string, string> headers)
         {
             if (get_user_repos().Any(x => x.url == url))
                 return; // allow already added
             if (http == null)
                 throw new OfflineModeException();
 
-            var response = await download_remote_repository(http, url, null);
+            var response = await download_remote_repository(http, url, headers, null);
             Debug.Assert(response != null, nameof(response) + " != null");
-            var (remoteRepo, etag) = response.Value;
-            var localPath = $"com.anatawa12.vpai.virtually-added.{Guid.NewGuid()}.json";
+            var (remote_repo, etag) = response.Value;
 
-            if (name == null)
-                name = remoteRepo.Get("name", JsonType.String, true);
-
-            var localCache = new LocalCachedRepository(localPath, name, url);
-            localCache.cache = remoteRepo.Get("packages", JsonType.Obj, true) ?? new JsonObj();
-            localCache.repo = remoteRepo;
+            var localCache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
             // set etag
             if (etag != null) {
                 if (localCache.vrc_get == null)
                     localCache.vrc_get = new VrcGetMeta();
                 localCache.vrc_get.etag = etag;
             }
-            PendingRepositories.Add(localCache);
+            var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
+            repo_cache.AddRepository(localPath, localCache);
+            PendingRepositories.Add((localPath, remote_repo.url()));
         }
 
         public async Task SavePendingRepositories()
         {
             for (var i = PendingRepositories.Count - 1; i >= 0; i--)
             {
-                var localCache = PendingRepositories[i];
+                var (localPath, _) = PendingRepositories[i];
                 PendingRepositories.RemoveAt(i);
 
-                var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
+                var localCache = repo_cache.get_repo(localPath);
+                System.Diagnostics.Debug.Assert(localCache != null, nameof(localCache) + " != null");
                 await write_repo(localPath, localCache);
-                Debug.Assert(localCache.creation_info != null, "localCache.CreationInfo != null");
-                localCache.creation_info.local_path = localPath;
-                var name = localCache.creation_info.name;
-                var url = localCache.creation_info.url;
-                add_user_repo(new UserRepoSetting(localPath, name, url));                
+                add_user_repo(new UserRepoSetting(localPath, localCache.name(), localCache.url(), localCache.id()));                
             }
         }
 
         #endregion
 
-        public Task add_local_repo([NotNull] string path, [CanBeNull] string name)
+        public void add_local_repo([NotNull] string path, [CanBeNull] string name)
         {
             if (get_user_repos().Any(x => x.local_path == path))
                 throw new VrcGetException("Already Added");
 
-            add_user_repo(new UserRepoSetting(path, name, null));
+            add_user_repo(new UserRepoSetting(path, name, null, null));
+        }
+    }
 
-            return Task.CompletedTask;
+    readonly struct PackageInfo
+    {
+        [NotNull] private readonly PackageJson _packageJson;
+        [NotNull] private readonly object _info;
+
+        private PackageInfo([NotNull] PackageJson packageJson, [NotNull] object info)
+        {
+            _packageJson = packageJson;
+            _info = info;
         }
 
+        [NotNull] public PackageJson package_json() => _packageJson;
+
+        public static PackageInfo remote(PackageJson json, LocalCachedRepository repo) => new PackageInfo(json, repo);
+        public static PackageInfo local(PackageJson json, string path) => new PackageInfo(json, path);
+
+        public string name()  => this.package_json().name;
+        public Version version()  => this.package_json().version;
+        public Dictionary<string, VersionRange> vpm_dependencies()  => this.package_json().vpm_dependencies;
+
+        // cs impl
+        public bool is_remote() => _info is LocalCachedRepository;
+        public LocalCachedRepository remote() => (LocalCachedRepository)_info;
+        public string local() => (string)_info;
+    }
+
+    interface RepoSource
+    {
+        Task<LocalCachedRepository> VisitLoadRepo([CanBeNull] HttpClient client);
+        string file_path();
+    }
+
+    class PreDefinedRepoSource : RepoSource
+    {
+        public Information Info { get; }
+        public string path { get; }
+
+        public PreDefinedRepoSource(Information info, string path)
+        {
+            Info = info;
+            this.path = path;
+        }
+
+        public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadPreDefinedRepo(client, this);
+
+        public string file_path() => path;
+
+        public readonly struct Information
+        {
+            public string file_name { get; }
+            public string url { get; }
+            public string name { get; }
+
+            private Information(string fileName, string url, string name)
+            {
+                file_name = fileName;
+                this.url = url;
+                this.name = name;
+            }
+
+            // ReSharper disable MemberHidesStaticFromOuterClass
+            public static readonly Information Official = new Information("vrc-official.json",
+                "https://packages.vrchat.com/official?download", "Official");
+            public static readonly Information Curated = new Information("vrc-curated.json",
+                "https://packages.vrchat.com/curated?download", "Curated");
+            // ReSharper restore MemberHidesStaticFromOuterClass
+        }
+
+        public static readonly Information Official = Information.Official;
+        public static readonly Information Curated = Information.Curated;
+
+        public static readonly Information[] Sources = { Official, Curated };
+    }
+
+    class UserRepoSource : RepoSource
+    {
+        public UserRepoSetting Setting;
+
+        public UserRepoSource(UserRepoSetting setting)
+        {
+            Setting = setting;
+        }
+
+        public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUserRepo(client, this);
+
+        public string file_path() => Setting.local_path;
+    }
+
+    class UndefinedSource : RepoSource
+    {
+        public string Path;
+
+        public UndefinedSource(string path)
+        {
+            Path = path;
+        }
+
+        public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUndefinedRepo(client, this);
+
+        public string file_path() => Path;
+    }
+
+    static partial class ModStatics
+    {
+        public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] string path,
+            [NotNull] LocalCachedRepository repo)
+        {
+            var remoteURL = repo.url();
+            if (remoteURL == null) return;
+
+            var foundEtag = repo.vrc_get?.etag;
+            try
+            {
+
+                var result = await download_remote_repository(client, remoteURL, repo.headers(), foundEtag);
+                if (result != null)
+                {
+                    var (remoteRepo, etag) = result.Value;
+                    repo.set_repo(remoteRepo);
+                    // set etag
+                    if (etag != null)
+                    {
+                        if (repo.vrc_get == null) repo.vrc_get = new VrcGetMeta();
+                        repo.vrc_get.etag = etag;
+                    }
+                    else
+                    {
+                        if (repo.vrc_get != null) repo.vrc_get.etag = null;
+                    }
+                }
+                else
+                {
+                    //Debug.Log($"cache matched downloading {remoteURL}");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"fetching remote repo '{remoteURL}'");
+                Debug.LogException(e);
+            }
+
+            try
+            {
+                await write_repo(path, repo);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"writing local repo '{path}'");
+                Debug.LogException(e);
+            }
+        }
+
+        public static async Task write_repo([NotNull] string path, [NotNull] LocalCachedRepository repo)
+        {
+            await Task.Run(() =>
+            {
+                var dir = Path.GetDirectoryName(path);
+                Debug.Assert(dir != null, nameof(dir) + " != null");
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(path, JsonWriter.Write(repo.ToJson()));
+            });
+        }
+
+        public static async Task<(Repository, string)?> download_remote_repository(
+            HttpClient client,
+            string url,
+            [CanBeNull] IDictionary<string, string> headers,
+            [CanBeNull] string etag
+        )
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (etag != null)
+            {
+                request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Parse(etag));
+            }
+
+            if (headers != null)
+                foreach (var (key, value) in headers)
+                    request.Headers.TryAddWithoutValidation(key, value);
+
+            var response = await client.SendAsync(request);
+            if (etag != null && response.StatusCode == HttpStatusCode.NotModified)
+                return null;
+            response.EnsureSuccessStatusCode();
+
+            var newEtag = response.Headers.ETag?.ToString();
+
+            var content = await response.Content.ReadAsStringAsync();
+            var repo = new Repository(new JsonParser(content).Parse(JsonType.Obj));
+            repo.set_url_if_none(url);
+            return (repo, newEtag);
+        }
+    }
+
+    partial class Environment {
         public Task<bool> remove_repo(Func<UserRepoSetting, bool> condition)
         {
             var removes = get_user_repos()
@@ -462,34 +566,34 @@ namespace Anatawa12.VrcGet
     internal class VpmManifest
     {
         private readonly JsonObj _body;
-        private readonly Dictionary<string, VpmDependency> dependencies;
-        private readonly Dictionary<string, VpmLockedDependency> locked;
+        private readonly Dictionary<string, VpmDependency> _dependencies;
+        private readonly Dictionary<string, VpmLockedDependency> _locked;
         private bool _changed;
 
-        public IReadOnlyDictionary<string, VpmDependency> Dependencies => dependencies;
-        public IReadOnlyDictionary<string, VpmLockedDependency> Locked => locked;
+        public IReadOnlyDictionary<string, VpmDependency> dependencies() => _dependencies;
+        public IReadOnlyDictionary<string, VpmLockedDependency> locked() => _locked;
 
         public VpmManifest(JsonObj body)
         {
             _body = body;
 
-            dependencies = body.Get("dependencies", JsonType.Obj, true)
+            _dependencies = body.Get("dependencies", JsonType.Obj, true)
                                ?.ToDictionary(x => x.Item1, x => new VpmDependency((JsonObj)x.Item2))
                            ?? new Dictionary<string, VpmDependency>();
-            locked = body.Get("locked", JsonType.Obj, true)
+            _locked = body.Get("locked", JsonType.Obj, true)
                          ?.ToDictionary(x => x.Item1, x => new VpmLockedDependency((JsonObj)x.Item2))
                      ?? new Dictionary<string, VpmLockedDependency>();
         }
 
         public void add_dependency(string name, VpmDependency dependency)
         {
-            dependencies[name] = dependency;
+            _dependencies[name] = dependency;
             add_value("dependencies", name, dependency.ToJson());
         }
 
         public void add_locked(string name, VpmLockedDependency dependency)
         {
-            locked[name] = dependency;
+            _locked[name] = dependency;
             add_value("locked", name, dependency.ToJson());
         }
 
@@ -509,34 +613,33 @@ namespace Anatawa12.VrcGet
 
     #endregion
 
-    class UnityProject
+    sealed partial class UnityProject
     {
-        private readonly string _packagesDir;
-        // ReSharper disable once InconsistentNaming
-        public readonly VpmManifest _manifest; // VPAI: public
-        private readonly List<(string dirName, PackageJson manifest)> _unlockedPackages;
+        private readonly string project_dir;
+        public readonly VpmManifest manifest; // VPAI: public
+        private readonly List<(string dirName, PackageJson manifest)> unlocked_packages;
 
-        private UnityProject(string packagesDir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages)
+        private UnityProject(string project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages)
         {
-            this._packagesDir = packagesDir;
-            this._manifest = manifest;
-            this._unlockedPackages = unlockedPackages;
+            this.project_dir = project_dir;
+            this.manifest = manifest;
+            this.unlocked_packages = unlockedPackages;
         }
 
         public static async Task<UnityProject> find_unity_project([NotNull] string unityProject)
         {
             // removed find support
             var unityFound = unityProject; //?? findUnityProjectPath();
+            var packages = Path.Combine(unityFound, "Packages");
 
-            unityFound = Path.Combine(unityFound, "Packages");
-            var manifest = Path.Combine(unityFound, "vpm-manifest.json");
+            var manifest = Path.Combine(packages, "Packages/vpm-manifest.json");
             var vpmManifest = new VpmManifest(await load_json_or_default(manifest, x => x));
 
             var unlockedPackages = new List<(string, PackageJson)>();
 
-            foreach (var dir in await Task.Run(() => Directory.GetDirectories(unityFound)))
+            foreach (var dir in await Task.Run(() => Directory.GetDirectories(packages)))
             {
-                var read = await try_read_unlocked_package(dir, Path.Combine(unityFound, dir), vpmManifest);
+                var read = await try_read_unlocked_package(dir, Path.Combine(packages, dir), vpmManifest);
                 if (read != null)
                     unlockedPackages.Add(read.Value);
             }
@@ -549,130 +652,442 @@ namespace Anatawa12.VrcGet
         {
             var packageJsonPath = Path.Combine(path, "package.json");
             var parsed = await load_json_or_else(packageJsonPath, x => new PackageJson(x), () => null);
-            if (parsed != null && parsed.name == name && vpmManifest.Locked.ContainsKey(name))
+            if (parsed != null && parsed.name == name && vpmManifest.locked().ContainsKey(name))
                 return null;
             return (name, parsed);
         }
 
         // no find_unity_project_path
+    }
 
-        #region VPAI
+    class AddPackageRequest
+    {
+        (string, VpmDependency)[] _dependencies;
+        PackageInfo[] _locked;
+        string[] _legacyFiles;
+        string[] _legacyFolders;
 
-        public AddPackageStatus CheckAddPackage(PackageJson request)
+        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, string[] legacy_files, string[] legacy_folders)
         {
-            if (_manifest.Dependencies.TryGetValue(request.name, out var dependency) &&
-                dependency.version >= request.version)
-                return AddPackageStatus.AlreadyAdded;
-            if (_manifest.Locked.TryGetValue(request.name, out var locked) && 
-                locked.version >= request.version)
-                return AddPackageStatus.JustAddToDependency;
-            return AddPackageStatus.InstallToLocked;
+            _dependencies = dependencies;
+            _locked = locked;
+            _legacyFiles = legacy_files;
+            _legacyFolders = legacy_folders;
         }
+        
+        public IReadOnlyList<PackageInfo> locked() => _locked;
 
-        #endregion
+        public IReadOnlyList<(string name, VpmDependency dep)> dependencies() => _dependencies;
 
-        public async Task add_package(Environment env, PackageJson request)
-        {
-            if (_manifest.Dependencies.TryGetValue(request.name, out var dependency) &&
-                dependency.version >= request.version)
-                throw new VrcGetException("AlreadyNewerPackageInstalled");
-            if (_manifest.Locked.TryGetValue(request.name, out var locked) && 
-                locked.version >= request.version)
+        public IReadOnlyList<string> legacy_files() => _legacyFiles;
+
+        public IReadOnlyList<string> legacy_folders() => _legacyFolders;
+    }
+
+    sealed partial class UnityProject {
+        public async Task<AddPackageRequest> add_package_request(
+        Environment env,
+        List<PackageInfo> packages,
+        bool to_dependencies
+        ) {
+            packages.retain(pkg =>
             {
-                _manifest.add_dependency(request.name, new VpmDependency(request.version));
-                return;
+                var dep = this.manifest.dependencies().get(pkg.name());
+                return dep == null || dep.version < pkg.version();
+            });
+
+            // if same or newer requested package is in locked dependencies,
+            // just add requested version into dependencies
+            var dependencies = new List<(string, VpmDependency)>();
+            var locked = new List<PackageInfo>();
+
+            foreach (var request in packages)
+            {
+                var dep = this.manifest.locked().get(request.name());
+                var update = dep == null || dep.version < request.version();
+
+                if (to_dependencies) {
+                    dependencies.Add((request.name(), new VpmDependency(request.version())));
+                }
+
+                if (update) {
+                    locked.Add(request);
+                }
             }
 
-            List<PackageJson> packages = await collect_adding_packages(env, request);
-            packages.Add(request);
+            if (locked.len() == 0) {
+                // early return: 
+                return new AddPackageRequest(
+                    dependencies: dependencies.ToArray(),
+                    locked: Array.Empty<PackageInfo>(),
+                    legacy_files: Array.Empty<string>(),
+                    legacy_folders: new string[0]
+                );
+            }
 
-            check_adding_package(packages);
+            var resolved = this.collect_adding_packages(env, locked);
 
-            _manifest.add_dependency(request.name, new VpmDependency(request.version));
+            var (legacy_files, legacy_folders) = await this.collect_legacy_assets(resolved);
 
-            await do_add_packages_to_locked(env, packages);
+            return new AddPackageRequest( 
+                dependencies: dependencies.ToArray(), 
+                locked: resolved,
+                legacy_files: legacy_files,
+                legacy_folders: legacy_folders
+            );
         }
 
-        // VPAI: make public
-        public void check_adding_package(IEnumerable<PackageJson> packages)
+    async Task<(string[], string[])> collect_legacy_assets(IReadOnlyCollection<PackageInfo> packages)  {
+        var folders = packages.SelectMany(x => x.package_json().legacy_folders).Select(pair => (pair.Key, pair.Value, false));
+        var files = packages.SelectMany(x => x.package_json().legacy_files).Select(pair => (pair.Key, pair.Value, true));
+        var assets = new List<(string, string, bool)>(folders.Concat(files));
+
+        const int NotFound = 0;
+        const int FoundFile = 2;
+        const int FoundFolder = 3;
+        const int GuidFile = 4;
+        const int GuidFolder = 5;
+
+        bool is_guid(string guid) =>
+            guid.Length == 32 &&
+            guid.All(x => ('0' <= x && x <= '9') || ('a' <= x && x <= 'f') || ('A' <= x && x <= 'F'));
+
+        var futures = assets.Select(async tuple =>
         {
-            foreach (var package in packages)
-                check_conflict(package.name, package.version);
-        }
-
-        // VPAI: make public
-        public async Task do_add_packages_to_locked(Environment env, List<PackageJson> packages)
-        {
-            foreach (var pkg in packages)
-                _manifest.add_locked(pkg.name, new VpmLockedDependency(pkg.version, pkg.vpm_dependencies));
-
-            await Task.WhenAll(packages.Select(x => env.add_package(x, _packagesDir)));
-        }
-
-        // no upgrade_package: VPAI only does adding package.
-        // no remove: VPAI only does adding package
-        // no mark_and_sweep
-
-        // VPAI: make public
-        public async Task<List<PackageJson>> collect_adding_packages(Environment env, params PackageJson[] packages)
-        {
-            var allDeps = new List<PackageJson>();
-            foreach (var packageJson in packages)
-                await collect_adding_packages_internal(allDeps, env, packageJson);
-            // ReSharper disable once ForCanBeConvertedToForeach
-            // size of all_deps will increase in the loop
-            for (var i = 0; i < allDeps.Count; i++)
-                await collect_adding_packages_internal(allDeps, env, allDeps[i]);
-            return allDeps;
-        }
-
-        private async Task collect_adding_packages_internal([ItemNotNull] List<PackageJson> addingDeps, Environment env, PackageJson pkg)
-        {
-            foreach (var (dep, range) in pkg.vpm_dependencies)
+            var (path, guid, is_file) = tuple;
+            // some packages uses '/' as path separator.
+            path = path.Replace('\\', '/');
+            // for security, deny absolute path.
+            if (Path.IsPathRooted(path))
             {
-                var installed = _manifest.Locked.TryGetValue(dep, out var locked) ? locked.version : null;
-                if (installed == null || !range.IsSatisfied(installed))
+                return (NotFound, null);
+            }
+
+            path = Path.Combine(this.project_dir, path);
+            var (file_exists, dir_exists) = await Task.Run(() => (File.Exists(path), Directory.Exists(path)));
+            if (file_exists && is_file)
+                return (FoundFile, path);
+            if (dir_exists && !is_file)
+                return (FoundFolder, path);
+
+            if (!is_guid(guid))
+                return (NotFound, null);
+            return is_file ? (GuidFile, guid) : (GuidFolder, guid);
+        });
+
+        var found_files = new HashSet<string>();
+        var found_folders = new HashSet<string>();
+        var find_guids = new Dictionary<string, bool>();
+
+        foreach (var (state, value) in await Task.WhenAll(futures))
+        {
+            string path;
+            switch (state)
+            {
+                case NotFound:
+                    break;
+                case FoundFile:
+                    path = value.strip_prefix(project_dir);
+                    Debug.Assert(path != null);
+                    found_files.Add(path);
+                    break;
+                case FoundFolder:
+                    path = value.strip_prefix(project_dir);
+                    Debug.Assert(path != null);
+                    found_folders.Add(path);
+                    break;
+                case GuidFile:
+                    find_guids[value] = true;
+                    break;
+                case GuidFolder:
+                    find_guids[value] = false;
+                    break;
+            }
+        }
+
+        if (find_guids.len() != 0) {
+            // walk dir
+
+            IEnumerable<(string, bool, string)> FindMetaFiles(string dir)
+            {
+                foreach (var meta_file in Directory.GetFiles(dir, "*.meta", SearchOption.AllDirectories))
                 {
-                    var found = await env.find_package_by_name(dep, v => range.IsSatisfied(v));
-                    if (found == null)
-                        throw new VrcGetException($"Dependency ({dep}) Not Found");
-                    addingDeps.Add(found);
+                    string guid_line = File.ReadLines(meta_file).FirstOrDefault(x => x.StartsWith("guid: ", StringComparison.Ordinal));
+                    if (guid_line == null) continue;
+
+                    var guid = guid_line.Substring("guid: ".Length).Trim();
+                    if (!is_guid(guid)) continue;
+
+                    var path = meta_file.Substring(0, meta_file.Length - ".meta".Length);
+
+                    var file_exists = File.Exists(path);
+                    var dir_exists = Directory.Exists(path);
+
+                    if (!file_exists && !dir_exists) continue;
+
+                    yield return (guid, file_exists, path);
+                }
+            }
+
+            var meta_files = await Task.Run(() =>
+                Directory.GetFiles(Path.Combine(project_dir, "Packages"), "*.meta", SearchOption.AllDirectories)
+                    .Concat(Directory.GetFiles(Path.Combine(project_dir, "Assets"), "*.meta",
+                        SearchOption.AllDirectories)));
+
+            var tuples = await Task.WhenAll(meta_files.Select(async meta_file =>
+            {
+                string guid_line = await Task.Run(() => File.ReadLines(meta_file).FirstOrDefault(x => x.StartsWith("guid: ", StringComparison.Ordinal)));
+                if (guid_line == null) return null;
+
+                var guid = guid_line.Substring("guid: ".Length).Trim();
+                if (!is_guid(guid)) return null;
+
+                var path = meta_file.Substring(0, meta_file.Length - ".meta".Length);
+
+                var (file_exists, dir_exists) = await Task.Run(() => (File.Exists(path), Directory.Exists(path)));
+
+                if (!file_exists && !dir_exists) return null;
+
+                return (guid, file_exists, path) as (string, bool, string)?;
+            }));
+
+            foreach (var mayNull in tuples)
+            {
+                if (mayNull == null) continue;
+                var (guid, is_file_actual, path) = mayNull.Value;
+
+                if (!find_guids.TryGetValue(guid, out var is_file)) continue;
+                if (is_file_actual != is_file) continue;
+
+                find_guids.Remove(guid);
+                path = path.strip_prefix(project_dir);
+                Debug.Assert(path != null);
+                if (is_file) {
+                    found_files.Add(path);
+                } else {
+                    found_folders.Add(path);
                 }
             }
         }
 
-        private void check_conflict(string name, Version version)
-        {
-            foreach (var (pkgName, dependencies) in all_dependencies())
-            {
-                if (dependencies.TryGetValue(name, out var dep))
+        return (found_files.ToArray(), found_folders.ToArray());
+    }
+
+        public async Task do_add_package_request(
+            Environment env,
+            AddPackageRequest request
+        ) {
+            // first, add to dependencies
+            foreach (var (name, dep) in request.dependencies()) {
+                this.manifest.add_dependency(name, dep);
+            }
+
+            // then, do install
+            await this.do_add_packages_to_locked(env, request.locked());
+
+            // finally try to remove legacy assets
+            async Task remove_meta_file(string base_path) {
+                try
                 {
-                    if (!dep.IsSatisfied(version))
-                    {
-                        throw new VrcGetException($"Conflict with Dependencies: {name} conflicts with {pkgName}");
+                    await CsUtils.remove_file($"{base_path}.meta");
+                }
+                catch (IOException e)
+                {
+                    Debug.LogError($"removing legacy asset at {base_path}: e");
+                }
+            }
+
+            async Task remove_file(string path) {
+                try
+                {
+                    await CsUtils.remove_file(path);
+                }
+                catch (IOException e)
+                {
+                    Debug.LogError($"removing legacy asset at {path}: e");
+                }
+                await remove_meta_file(path);
+            }
+
+            async Task remove_folder(string path) {
+                try
+                {
+                    await CsUtils.remove_dir_all(path);
+                }
+                catch (IOException e)
+                {
+                    Debug.LogError($"removing legacy asset at {path}: e");
+                }
+                await remove_meta_file(path);
+            }
+
+            await Task.WhenAll(request.legacy_files().Select(remove_file)
+                .Concat(request.legacy_folders().Select(remove_folder)));
+        }
+
+        private async Task do_add_packages_to_locked(Environment env, IReadOnlyList<PackageInfo> packages)
+        {
+            foreach (var pkg in packages)
+                manifest.add_locked(pkg.name(), new VpmLockedDependency(pkg.version(), pkg.vpm_dependencies()));
+
+            var packages_folder = Path.Combine(project_dir, "Packages");
+
+            await Task.WhenAll(packages.Select(x => env.add_package(x, packages_folder)));
+        }
+
+        // no remove: VPAI only does adding package
+        // no mark_and_sweep
+
+
+        class DependencyInfo
+        {
+            public PackageInfo? @using;
+            [CanBeNull] public Version current;
+            // "" key for root dependencies
+            [NotNull] public readonly Dictionary<string, VersionRange> requirements;
+            [NotNull] public HashSet<string> dependencies;
+
+            public DependencyInfo()
+            {
+                @using = null;
+                current = null;
+                requirements = new Dictionary<string, VersionRange> {};
+                dependencies = new HashSet<string>();
+            }
+
+            public DependencyInfo(VersionRange range) : this()
+            {
+                requirements.Add("", range);
+            }
+
+            public void add_range(string source, VersionRange range) {
+                requirements[source] = range;
+            }
+
+            public void remove_range(string source) {
+                requirements.Remove(source);
+            }
+
+            public void set_using_info(Version version, HashSet<string> dependencies) {
+                current = version;
+                this.dependencies = dependencies;
+            }
+
+            public HashSet<string> set_package(PackageInfo new_pkg) {
+                current = new_pkg.version();
+                var old = this.dependencies;
+                this.dependencies = new HashSet<string>(new_pkg.vpm_dependencies().Keys);
+                @using = new_pkg;
+
+                // using is save
+                return old;
+            }
+        }
+
+        PackageInfo[] collect_adding_packages(
+        Environment env,
+            IEnumerable<PackageInfo> packages
+    ) {
+
+            var dependencies = new Dictionary<string, DependencyInfo>();
+
+            // first, add dependencies
+            // VPAI: we don't need root_dependencies
+            foreach (var (name, dep) in this.manifest.dependencies())
+            {
+                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(dep.version));
+            }
+
+            // VPAI
+            DependencyInfo GetOrPut(string pkg)
+            {
+                if (!dependencies.TryGetValue(pkg, out var dep))
+                    dependencies[pkg] = dep = new DependencyInfo();
+                return dep;
+            }
+
+            // then, add locked dependencies info
+            foreach (var (source, locked) in this.manifest.locked())
+            {
+                GetOrPut(source).set_using_info(locked.version, new HashSet<string>(locked.dependencies.Keys));
+
+                foreach (var (dependency, range) in locked.dependencies)
+                    GetOrPut(dependency).add_range(source, range);
+            }
+
+            var queue = new LinkedList<PackageInfo>(packages);
+
+            while (queue.Count != 0)
+            {
+                var x = queue.First.Value;
+                queue.RemoveFirst();
+                //log::debug!("processing package {} version {}", x.name(), x.version());
+                var name = x.name();
+                var vpm_dependencies = x.vpm_dependencies();
+                var old_dependencies = GetOrPut(name).set_package(x);
+
+                // remove previous dependencies if exists
+                foreach (var dep in old_dependencies) {
+                    dependencies[dep].remove_range(dep);
+                }
+
+                // add new dependencies
+                foreach (var (dependency, range) in vpm_dependencies)
+                {
+                    //log::debug!("processing package {name}: dependency {dependency} version {range}");
+                    var entry = GetOrPut(dependency);
+                    var install = true;
+
+                    if (queue.Any(y => y.name() == dependency && range.matches(y.version()))) {
+                        // if installing version is good, no need to reinstall
+                        install = false;
+                        //log::debug!("processing package {name}: dependency {dependency} version {range}: pending matches");
+                    } else {
+                        // if already installed version is good, no need to reinstall
+                        
+                        if (entry.current is Version version) {
+                            if (range.matches(version)) {
+                                //log::debug!("processing package {name}: dependency {dependency} version {range}: existing matches");
+                                install = false;
+                            }
+                        }
+                    }
+
+                    entry.add_range(name, range);
+
+                    if (install) {
+                        var found = env.find_package_by_name(dependency, range.matches);
+                        if (found == null)
+                            throw new VrcGetException($"dependency not found: {dependency}");
+
+                        // remove existing if existing
+                        queue.retain( y => y.name() != dependency);
+                        queue.AddLast(found.Value);
                     }
                 }
             }
 
-            foreach (var (dirName, packageJson) in _unlockedPackages)
+            // finally, check for conflict.
+            foreach (var (name, info) in dependencies)
             {
-                if (dirName == name)
+                if (info.current == null) continue;
+                foreach (var (source, range) in info.requirements)
                 {
-                    throw new VrcGetException($"Conflicts with unlocked package: {name}");
-                }
-
-                if (packageJson == null) continue;
-
-                if (packageJson.name == name)
-                {
-                    throw new VrcGetException($"Conflicts with unlocked package: {name}");
+                    if (!range.matches(info.current)) {
+                        throw new VrcGetException($"Conflict with Dependencies: {name} conflicts with {source}");
+                    }
                 }
             }
+
+            return dependencies
+                .Where(x => x.Value.@using != null)
+                .Select(x => x.Value.@using.Value)
+                .ToArray();
         }
 
         public async Task save()
         {
-            await _manifest.SaveTo(Path.Combine(_packagesDir, "vpm-manifest.json"));
+            await manifest.SaveTo(Path.Combine(project_dir, "Packages/vpm-manifest.json"));
         }
         
         // no resolve: VPAI only does installing packages
@@ -681,91 +1096,15 @@ namespace Anatawa12.VrcGet
 
         internal IEnumerable<(string, Dictionary<string, VersionRange>)> all_dependencies()
         {
-            var lockedDependencies = _manifest.Locked.Select(kvp => (kvp.Key, Dependencies: kvp.Value.dependencies));
-            var unlockedDependencies = _unlockedPackages.Where(x => x.manifest != null)
+            var lockedDependencies = manifest.locked().Select(kvp => (kvp.Key, Dependencies: kvp.Value.dependencies));
+            var unlockedDependencies = unlocked_packages.Where(x => x.manifest != null)
                 .Select(x => (Name: x.manifest.name, VpmDependencies: x.manifest.vpm_dependencies));
 
             return lockedDependencies.Concat(unlockedDependencies);
         } 
     }
 
-    #region repoSources
-
-    interface IRepoSource
-    {
-        Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache);
-    }
-
-    class PreDefinedRepoSource : IRepoSource
-    {
-        public string FileName { get; }
-        public string URL { get; }
-        public string Name { get; }
-
-        private PreDefinedRepoSource(string fileName, string url, string name)
-        {
-            FileName = fileName;
-            URL = url;
-            Name = name;
-        }
-
-        public static readonly PreDefinedRepoSource Official = new PreDefinedRepoSource("vrc-official.json",
-            "https://packages.vrchat.com/official?download", "Official");
-        public static readonly PreDefinedRepoSource Curated = new PreDefinedRepoSource("vrc-curated.json",
-            "https://packages.vrchat.com/curated?download", "Curated");
-
-        public static readonly PreDefinedRepoSource[] Sources = { Official, Curated };
-
-        public async Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache)
-        {
-            return await repoCache.get_or_create_repo(Path.Combine(environment.get_repos_dir(), FileName), URL, Name);
-        }
-    }
-
-    class UserRepoSource : IRepoSource
-    {
-        public UserRepoSetting Setting;
-
-        public UserRepoSource(UserRepoSetting setting)
-        {
-            Setting = setting;
-        }
-
-        public async Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache)
-        {
-            return await repoCache.get_user_repo(Setting);
-        }
-    }
-
-    class UndefinedSource : IRepoSource
-    {
-        public string Path;
-
-        public UndefinedSource(string path)
-        {
-            Path = path;
-        }
-
-        public async Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache)
-        {
-            return await repoCache.get_repo(Path, () => throw new InvalidOperationException("unreachable"));
-        }
-    }
-
-    #endregion
-
     #region VPAI
-
-    internal class PendingSource : IRepoSource
-    {
-        [NotNull] private readonly LocalCachedRepository _source;
-
-        public PendingSource([NotNull] LocalCachedRepository source) =>
-            _source = source ?? throw new ArgumentNullException(nameof(source));
-
-        public Task<LocalCachedRepository> GetRepo(Environment environment, RepoHolder repoCache) =>
-            Task.FromResult(_source);
-    }
 
     public enum AddPackageStatus
     {
@@ -776,85 +1115,7 @@ namespace Anatawa12.VrcGet
     
     delegate bool VersionSelector(Version version);
 
-    static class ModStatics
-    {
-        public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] string path, [NotNull] LocalCachedRepository repo)
-        {
-            var remoteURL = repo.creation_info?.url;
-            if (remoteURL == null) return;
-
-            var foundEtag = repo.vrc_get?.etag;
-            try
-            {
-
-                var result = await download_remote_repository(client, remoteURL, foundEtag);
-                if (result != null)
-                {
-                    var (remoteRepo, etag) = result.Value;
-                    repo.cache = remoteRepo.Get("packages", JsonType.Obj, true) ?? new JsonObj();
-                    // set etag
-                    if (etag != null)
-                    {
-                        if (repo.vrc_get == null) repo.vrc_get = new VrcGetMeta();
-                        repo.vrc_get.etag = etag;
-                    }
-                    else
-                    {
-                        if (repo.vrc_get != null) repo.vrc_get.etag = null;
-                    }
-
-                    repo.repo = remoteRepo;
-                }
-                else
-                {
-                    //Debug.Log($"cache matched downloading {remoteURL}");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"fetching remote repo '{remoteURL}'");
-                Debug.LogException(e);
-            }
-
-            try
-            {
-                await write_repo(path, repo);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"writing local repo '{path}'");
-                Debug.LogException(e);
-            }
-        }
-
-        public static async Task write_repo([NotNull] string path, [NotNull] LocalCachedRepository repo)
-        {
-            await Task.Run(() =>
-            {
-                var dir = Path.GetDirectoryName(path);
-                Debug.Assert(dir != null, nameof(dir) + " != null");
-                Directory.CreateDirectory(dir);
-                File.WriteAllText(path, JsonWriter.Write(repo.ToJson()));
-            });
-        }
-
-        public static async Task<(JsonObj, string)?> download_remote_repository(HttpClient client, string url, [CanBeNull] string etag)
-        {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            if (etag != null) {
-                request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Parse(etag));
-            }
-            var response = await client.SendAsync(request);
-            if (etag != null && response.StatusCode == HttpStatusCode.NotModified)
-                return null;
-            response.EnsureSuccessStatusCode();
-
-            var newEtag = response.Headers.ETag?.ToString();
-
-            var content = await response.Content.ReadAsStringAsync();
-            return (new JsonParser(content).Parse(JsonType.Obj), newEtag);
-        }
-
+    static partial class ModStatics {
         [ItemCanBeNull]
         public static Task<FileStream> try_open_file([NotNull] string path)
         {
