@@ -214,9 +214,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 if (env.PendingRepositories.Count != 0)
                 {
                     confirmMessage.Append("\n\nThis will add following repositories:");
-                    foreach (var localCachedRepository in env.PendingRepositories)
+                    foreach (var (_, url) in env.PendingRepositories)
                         // ReSharper disable once PossibleNullReferenceException
-                        confirmMessage.Append('\n').Append(localCachedRepository);
+                        confirmMessage.Append('\n').Append(url);
                 }
 
                 if (request.legacy_folders().Count != 0 || request.legacy_files().Count != 0)
