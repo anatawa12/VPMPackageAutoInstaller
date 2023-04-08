@@ -168,6 +168,7 @@ namespace Anatawa12.VrcGet
         {
             var result =  new JsonObj();
             result.Add("repo", _repo.ToJson());
+            result.Add("headers", headers().ToJson(x => x));
             if (vrc_get != null) result.Add("vrc-get", vrc_get.ToJson());
             return result;
         }
@@ -313,6 +314,14 @@ namespace Anatawa12.VrcGet
                 foreach (var (key, value) in obj)
                     result[key] = parser(value);
             return result;
+        }
+
+        public static JsonObj ToJson<T>(this IDictionary<string, T> self, Func<T, object> toJson)
+        {
+            var obj = new JsonObj();
+            foreach (var (key, value) in self)
+                obj.Add(key, toJson(value));
+            return obj;
         }
     }
 }
