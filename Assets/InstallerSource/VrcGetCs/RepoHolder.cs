@@ -26,7 +26,7 @@ namespace Anatawa12.VrcGet
             cached_repos_new = new Dictionary<string, LocalCachedRepository>();
         }
 
-        internal async Task load_repos(IEnumerable<RepoSource> sources)
+        internal async Task load_repos([NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
         {
             var repos = await Task.WhenAll(sources.Select(async src =>
                 (await load_repo_from_source(http, src), src.file_path())));
@@ -37,12 +37,13 @@ namespace Anatawa12.VrcGet
             }
         }
 
-        static async Task<LocalCachedRepository> load_repo_from_source(HttpClient client, RepoSource source)
+        static async Task<LocalCachedRepository> load_repo_from_source([CanBeNull] HttpClient client, [NotNull] RepoSource source)
         {
             return await source.VisitLoadRepo(client);
         }
 
-        public static async Task<LocalCachedRepository> LoadPreDefinedRepo(HttpClient client, PreDefinedRepoSource source)
+        public static async Task<LocalCachedRepository> LoadPreDefinedRepo([CanBeNull] HttpClient client,
+            [NotNull] PreDefinedRepoSource source)
         {
             return await load_remote_repo(
                 client,
@@ -52,7 +53,8 @@ namespace Anatawa12.VrcGet
             );
         }
 
-        public static async Task<LocalCachedRepository> LoadUserRepo(HttpClient client, UserRepoSource source)
+        public static async Task<LocalCachedRepository> LoadUserRepo([CanBeNull] HttpClient client,
+            [NotNull] UserRepoSource source)
         {
             var user_repo = source.Setting;
             if (user_repo.url is string url)
@@ -63,22 +65,24 @@ namespace Anatawa12.VrcGet
                     user_repo.local_path,
                     url
                 );
-            } else
+            }
+            else
             {
                 return await load_local_repo(client, user_repo.local_path);
             }
         }
 
-        public static async Task<LocalCachedRepository> LoadUndefinedRepo(HttpClient client, UndefinedSource source)
+        public static async Task<LocalCachedRepository> LoadUndefinedRepo([CanBeNull] HttpClient client,
+            [NotNull] UndefinedSource source)
         {
             return await load_local_repo(client, source.Path);
         }
 
         static async Task<LocalCachedRepository> load_remote_repo(
             [CanBeNull] HttpClient client,
-            Dictionary<String, String> headers,
-            string path,
-            string remote_url
+            [CanBeNull] Dictionary<String, String> headers,
+            [NotNull] string path,
+            [NotNull] string remote_url
         )
         {
             return await load_repo(path, client, async () =>
@@ -90,7 +94,7 @@ namespace Anatawa12.VrcGet
                 System.Diagnostics.Debug.Assert(may_null != null, nameof(may_null) + " != null");
                 var (remote_repo, etag) = may_null.Value;
 
-                var local_cache = new LocalCachedRepository(remote_repo, headers);
+                var local_cache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
 
                 if (etag != null)
                 {
@@ -135,6 +139,7 @@ namespace Anatawa12.VrcGet
             {
                 return await if_not_found();
             }
+
             if (text == null)
                 return await if_not_found();
 
@@ -149,7 +154,8 @@ namespace Anatawa12.VrcGet
         public IEnumerable<(string, LocalCachedRepository)> get_repo_with_path() =>
             cached_repos_new.Select(x => (x.Key, x.Value));
 
-        [CanBeNull] internal LocalCachedRepository get_repo(string path) => cached_repos_new.get(path);
+        [CanBeNull]
+        internal LocalCachedRepository get_repo(string path) => cached_repos_new.get(path);
 
         // VPAI: to add pending repo
         public void AddRepository(string path, LocalCachedRepository cache)
