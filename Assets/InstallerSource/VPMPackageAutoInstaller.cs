@@ -164,7 +164,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             await env.load_package_infos();
 
             ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
-            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null, null)));
+            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl.url, null, repoUrl.headers)));
 
             ShowProgress("Resolving dependencies...", Progress.ResolvingDependencies);
             var includePrerelease = config.includePrerelease;
@@ -313,18 +313,39 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     sealed class VpaiConfig
     {
-        public readonly string[] vpmRepositories;
+        public readonly VpaiRepository[] vpmRepositories;
         public readonly bool includePrerelease;
         public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
 
         public VpaiConfig(JsonObj json)
         {
-            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Cast<string>()?.ToArray() ??
-                              Array.Empty<string>();
+            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Select(v => new VpaiRepository(v))?.ToArray();
             includePrerelease = json.Get("includePrerelease", JsonType.Bool, true);
             VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
+        }
+    }
+
+    sealed class VpaiRepository
+    {
+        public readonly string url;
+        public readonly Dictionary<string, string> headers;
+
+        public VpaiRepository(object obj)
+        {
+            if (obj is string s)
+            {
+                url = s;
+                headers = new Dictionary<string, string>();
+            }
+            else if (obj is JsonObj json)
+            {
+                url = json.Get("url", JsonType.String);
+                headers = json.Get("vpmDependencies", JsonType.Obj, true)
+                              ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
+                          ?? new Dictionary<string, string>();
+            }
         }
     }
 }

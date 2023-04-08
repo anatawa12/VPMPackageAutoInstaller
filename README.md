@@ -64,7 +64,14 @@ An experimental project to install [vpm] package published in non-official regis
   // NOTICE: You should not include vrchat official or curated repositories. 
   //         official / curated repositories are always included in repositories
   "vpmRepositories": [
-    "https://vpm.anatawa12.com/vpm.json"
+    "https://vpm.anatawa12.com/vpm.json",
+    // or you can use object form to define headers for the repository.
+    {
+      "url": "https://vpm.anatawa12.com/vpm.json",
+      "headers": {
+        "x-your-header": "your-header-value-here"
+      }
+    }
   ],
   // List of dependencies to be added. Non-vpm dependencies are not supported.
   "vpmDependencies": {
