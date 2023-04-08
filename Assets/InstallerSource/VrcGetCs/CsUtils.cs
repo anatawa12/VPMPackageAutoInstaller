@@ -1,3 +1,5 @@
+// ReSharper disable InconsistentNaming
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,9 +26,9 @@ namespace Anatawa12.VrcGet
 
         public static VersionRange Parse(string range) => new VersionRange(range);
 
-        public bool IsSatisfied(Version installed) => _range.IsSatisfied(installed);
+        public bool matches(Version installed) => _range.IsSatisfied(installed);
 
-        public bool IsSatisfied(Version installed, bool includePrerelease) =>
+        public bool matches(Version installed, bool includePrerelease) =>
             _range.IsSatisfied(installed, includePrerelease);
 
         private bool Equals(VersionRange other) => _original == other._original;
@@ -37,10 +39,30 @@ namespace Anatawa12.VrcGet
         public override int GetHashCode() => _original.GetHashCode();
 
         public override string ToString() => _original;
+
+        public static VersionRange same_or_later(Version depVersion)
+        {
+            return new VersionRange($">={depVersion}");
+        }
     }
 
     static class CsUtils
     {
+        public static async Task create_dir_all(string path)
+        {
+            await Task.Run(() => Directory.CreateDirectory(path));
+        }
+
+        public static async Task remove_dir_all(string path)
+        {
+            await Task.Run(() => Directory.Delete(path, true));
+        }
+
+        public static async Task remove_file(string path)
+        {
+            await Task.Run(() => File.Delete(path));
+        }
+
         public static void AddAllTo<T>(this IEnumerable<T> self, List<T> collection)
         {
             collection.AddRange(self);
@@ -50,6 +72,36 @@ namespace Anatawa12.VrcGet
         {
             foreach (var value in self)
                 collection.Add(value);
+        }
+
+        public static int len<T>(this ICollection<T> self) => self.Count;
+        public static void retain<T>(this List<T> self, Predicate<T> match) => self.RemoveAll(x => !match(x));
+
+        public static void retain<T>(this LinkedList<T> self, Predicate<T> match)
+        {
+            var iter = self.First;
+            while (iter != null)
+            {
+                var current = iter;
+                var value = iter.Value;
+                iter = iter.Next;
+                if (!match(value))
+                    self.Remove(current);
+            }
+        }
+
+        [CanBeNull]
+        public static TValue get<TKey, TValue>(this IReadOnlyDictionary<TKey, TValue> self, TKey key)
+        {
+            self.TryGetValue(key, out var result);
+            return result;
+        }
+        [CanBeNull]
+        public static string strip_prefix(this string self, string prefix)
+        {
+            if (self.StartsWith(prefix, StringComparison.Ordinal))
+                return self.Substring(prefix.Length);
+            return null;
         }
 
         public static IEnumerable<T> DistinctBy<T, TKey>(this IEnumerable<T> self, Func<T, TKey> keySelector)

@@ -31,10 +31,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -96,15 +94,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
             LoadingConfigJson,
             LoadingVpmManifestJson,
             LoadingGlobalSettingsJson,
+            DownloadingRepositories,
             DownloadingNewRepositories,
-            DownloadingPackageInfo,
             ResolvingDependencies,
-            CheckingInstallationInformation,
             Prompting,
             SavingRemoteRepositories,
             DownloadingAndExtractingPackages,
             SavingConfigChanges,
-            RemovingLegacyAssets,
             RefreshingUnityPackageManger,
             Finish
         }
@@ -161,37 +157,29 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
                 "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
             ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
-            var env = await VrcGet.Environment.Create(client);
+            var env = await VrcGet.Environment.load_default(client);
             ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
-            var unityProject = await VrcGet.UnityProject.FindUnityProject(Directory.GetCurrentDirectory());
+            var unityProject = await VrcGet.UnityProject.find_unity_project(Directory.GetCurrentDirectory());
+            ShowProgress("Downloading package information...", Progress.DownloadingRepositories);
+            await env.load_package_infos();
 
             ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
-            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null)));
+            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl, null, null)));
 
-            ShowProgress("Downloading package information...", Progress.DownloadingPackageInfo);
+            ShowProgress("Resolving dependencies...", Progress.ResolvingDependencies);
             var includePrerelease = config.includePrerelease;
 
-            var requestedPackages = await Task.WhenAll(config.VpmDependencies.Select(async kvp =>
+            var dependencies = config.VpmDependencies.Select(kvp =>
             {
-                var package = await env.FindPackageByName(kvp.Key, v => kvp.Value.IsSatisfied(v, includePrerelease))
+                var package = env.find_package_by_name(kvp.Key, v => kvp.Value.matches(v, includePrerelease))
                     ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
-                var status = unityProject.CheckAddPackage(package);
-                return (package, status);
-            }));
+                return package;
+            }).ToList();
 
-            ShowProgress("Downloading & Resolving dependencies information...", Progress.ResolvingDependencies);
-            List<VrcGet.PackageJson> toInstall;
-            {
-                var installRequested = requestedPackages.Where(x => x.status == VrcGet.AddPackageStatus.InstallToLocked)
-                    .Select(x => x.package).ToArray();
-                toInstall = await unityProject.CollectAddingPackages(env, installRequested);
-                toInstall.AddRange(installRequested);
-            }
-
-            ShowProgress("Checking installation information...", Progress.CheckingInstallationInformation);
+            VrcGet.AddPackageRequest request;
             try
             {
-                unityProject.CheckAddingPackages(toInstall);
+                request = await unityProject.add_package_request(env, dependencies, true);
             }
             catch (VrcGet.VrcGetException e)
             {
@@ -203,41 +191,11 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
-            if (requestedPackages.Length == 0)
+            if (request.locked().Count == 0)
             {
                 if (!IsNoPrompt())
                     EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
                 return false;
-            }
-
-            var removeFolders = new List<string>();
-            var removeFiles = new List<string>();
-
-            void CollectLegacyAssets(List<string> removePaths, Dictionary<string, string> mapping,
-                Func<string, bool> filter)
-            {
-                foreach (var (legacyFolder, guid) in mapping)
-                {
-                    // legacyAssets may use '\\' for path separator but in unity '/' is for both windows and posix
-                    var legacyAssetPath = legacyFolder.Replace('\\', '/');
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(legacyAssetPath);
-                    if (asset != null && filter(legacyAssetPath))
-                    {
-                        removePaths.Add(AssetDatabase.GetAssetPath(asset));
-                    }
-                    else
-                    {
-                        var path = AssetDatabase.GUIDToAssetPath(guid);
-                        if (!string.IsNullOrEmpty(path) && filter(legacyFolder))
-                            removePaths.Add(path);
-                    }
-                }
-            }
-
-            foreach (var packageJson in toInstall)
-            {
-                CollectLegacyAssets(removeFolders, packageJson.LegacyFolders, Directory.Exists);
-                CollectLegacyAssets(removeFiles, packageJson.LegacyFiles, File.Exists);
             }
 
             ShowProgress("Prompting to user...", Progress.Prompting);
@@ -245,23 +203,24 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 var confirmMessage = new StringBuilder("You're installing the following packages:");
 
-                foreach (var (name, version) in requestedPackages.Select(x => (x.package.Name, x.package.Version))
-                             .Concat(toInstall.Select(x => (x.Name, x.Version)))
+                foreach (var (name, version) in 
+                         request.locked().Select(x => (Name: x.name(), Version: x.version()))
+                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version)))
                              .Distinct())
                     confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
 
                 if (env.PendingRepositories.Count != 0)
                 {
                     confirmMessage.Append("\n\nThis will add following repositories:");
-                    foreach (var localCachedRepository in env.PendingRepositories)
+                    foreach (var (_, url) in env.PendingRepositories)
                         // ReSharper disable once PossibleNullReferenceException
-                        confirmMessage.Append('\n').Append(localCachedRepository.CreationInfo.URL);
+                        confirmMessage.Append('\n').Append(url);
                 }
 
-                if (removeFiles.Count != 0 || removeFolders.Count != 0)
+                if (request.legacy_folders().Count != 0 || request.legacy_files().Count != 0)
                 {
                     confirmMessage.Append("\n\nYou're also deleting the following files/folders:");
-                    foreach (var path in removeFiles.Concat(removeFolders))
+                    foreach (var path in request.legacy_folders().Concat(request.legacy_files()))
                         confirmMessage.Append('\n').Append(path);
                 }
 
@@ -275,34 +234,12 @@ namespace Anatawa12.VpmPackageAutoInstaller
             await env.SavePendingRepositories();
 
             ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
-            foreach (var (package, status) in requestedPackages)
-                if (status != VrcGet.AddPackageStatus.AlreadyAdded)
-                    unityProject._manifest.AddDependency(package.Name, new VrcGet.VpmDependency(package.Version));
 
-            await unityProject.DoAddPackagesToLocked(env, toInstall);
+            await unityProject.do_add_package_request(env, request);
 
             ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
-            await unityProject.Save();
-            await env.Save();
-
-            void RemoveLegacyAsset(string path, Action<string> remover)
-            {
-                try
-                {
-                    remover(path);
-                }
-                catch (IOException e)
-                {
-                    Debug.LogError($"error during deleting legacy: {path}: {e}");
-                }
-            }
-
-            ShowProgress("Removing legacy folders/files...", Progress.RemovingLegacyAssets);
-
-            foreach (var path in removeFiles)
-                RemoveLegacyAsset(path, File.Delete);
-            foreach (var path in removeFolders)
-                RemoveLegacyAsset(path, p => Directory.Delete(p, true));
+            await unityProject.save();
+            await env.save();
 
             ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
             ResolveUnityPackageManger();
@@ -389,113 +326,5 @@ namespace Anatawa12.VpmPackageAutoInstaller
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
         }
-    }
-
-    [AsyncMethodBuilder(typeof(SyncedTask<>))]
-    public class SyncedTask<TResult>
-    {
-        private IAsyncStateMachine _stateMachine;
-        private bool _end = false;
-        private TResult _result;
-        private Exception _exception;
-
-        // block system
-        private TaskCompletionSource<bool> _blockSource;
-
-        [UsedImplicitly] // async method builder
-        public static SyncedTask<TResult> Create() => new SyncedTask<TResult>();
-
-        [UsedImplicitly] // async method builder
-        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
-        {
-            SynchronizationContext.SetSynchronizationContext(null);
-            stateMachine.MoveNext();
-        }
-
-        [UsedImplicitly] // async method builder
-        public void SetStateMachine(IAsyncStateMachine stateMachine)
-        {
-            _stateMachine = stateMachine;
-        }
-
-        [UsedImplicitly] // async method builder
-        public void SetResult(TResult result)
-        {
-            _result = result;
-            _end = true;
-        }
-
-        [UsedImplicitly] // async method builder
-        public void SetException(Exception exception)
-        {
-            _exception = exception;
-            _end = true;
-        }
-
-        [UsedImplicitly] // async method builder
-        public SyncedTask<TResult> Task => this;
-
-        [UsedImplicitly] // async method builder
-        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : INotifyCompletion
-            where TStateMachine : IAsyncStateMachine
-        {
-            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
-            _blockSource = new TaskCompletionSource<bool>();
-            if (_stateMachine == null)
-            {
-                _stateMachine = stateMachine;
-                _stateMachine.SetStateMachine(_stateMachine);
-            }
-
-            SynchronizationContext.SetSynchronizationContext(null);
-            awaiter.OnCompleted(() => _blockSource.SetResult(true));
-        }
-
-        [UsedImplicitly] // async method builder
-        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter,
-            ref TStateMachine stateMachine)
-            where TAwaiter : ICriticalNotifyCompletion
-            where TStateMachine : IAsyncStateMachine
-        {
-            Debug.Assert(_blockSource == null, "_blockSource should not be initialized");
-            _blockSource = new TaskCompletionSource<bool>();
-            if (_stateMachine == null)
-            {
-                _stateMachine = stateMachine;
-                _stateMachine.SetStateMachine(_stateMachine);
-            }
-
-            SynchronizationContext.SetSynchronizationContext(null);
-            awaiter.UnsafeOnCompleted(() => _blockSource.SetResult(true));
-        }
-
-        public TResult Execute()
-        {
-            while (!_end)
-            {
-                _blockSource.Task.Wait();
-                _blockSource = null;
-                SynchronizationContext.SetSynchronizationContext(null);
-                _stateMachine.MoveNext();
-            }
-
-            if (_exception != null)
-                throw _exception;
-            return _result;
-        }
-    }
-}
-
-namespace System.Runtime.CompilerServices
-{
-    sealed class AsyncMethodBuilderAttribute : Attribute
-    {
-        public AsyncMethodBuilderAttribute(Type builderType)
-        {
-            BuilderType = builderType;
-        }
-
-        public Type BuilderType { get; }
     }
 }

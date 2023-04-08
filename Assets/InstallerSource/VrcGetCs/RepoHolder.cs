@@ -1,9 +1,10 @@
+// ReSharper disable InconsistentNaming
+
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
@@ -14,48 +15,96 @@ namespace Anatawa12.VrcGet
 {
     class RepoHolder
     {
-        [CanBeNull] private readonly HttpClient _http;
+        [CanBeNull] private readonly HttpClient http;
 
         // the pointer of LocalCachedRepository will never be changed
-        [NotNull] readonly ConcurrentDictionary<string, Entry> _cachedRepos;
-
-        class Entry
-        {
-            public readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
-            public LocalCachedRepository Field;
-        }
+        [NotNull] readonly Dictionary<string, LocalCachedRepository> cached_repos_new;
 
         public RepoHolder([CanBeNull] HttpClient http)
         {
-            _http = http;
-            _cachedRepos = new ConcurrentDictionary<string, Entry>();
+            this.http = http;
+            cached_repos_new = new Dictionary<string, LocalCachedRepository>();
         }
 
-        [ItemNotNull]
-        public async Task<LocalCachedRepository> GetOrCreateRepo(
-            [NotNull] string path,
-            [NotNull] string remoteUrl,
-            [CanBeNull] string name)
+        internal async Task load_repos([NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
         {
-            return await GetRepo(path, async () =>
+            var repos = await Task.WhenAll(sources.Select(async src =>
+                (await load_repo_from_source(http, src), src.file_path())));
+
+            foreach (var (repo, path) in repos)
             {
-                var http = _http ?? throw new IOException("offline mode");
-                var result = await DownloadRemoteRepository(http, remoteUrl, null);
-                System.Diagnostics.Debug.Assert(result != null, nameof(result) + " != null: no etag");
-                var (remoteRepo, etag) = result.Value;
-                var localCache = new LocalCachedRepository(path, name, remoteUrl);
-                localCache.Cache = remoteRepo.Get("packages", JsonType.Obj, true);
-                localCache.Repo = remoteRepo;
+                cached_repos_new[path] = repo;
+            }
+        }
+
+        static async Task<LocalCachedRepository> load_repo_from_source([CanBeNull] HttpClient client, [NotNull] RepoSource source)
+        {
+            return await source.VisitLoadRepo(client);
+        }
+
+        public static async Task<LocalCachedRepository> LoadPreDefinedRepo([CanBeNull] HttpClient client,
+            [NotNull] PreDefinedRepoSource source)
+        {
+            return await load_remote_repo(
+                client,
+                null,
+                source.path,
+                source.Info.url
+            );
+        }
+
+        public static async Task<LocalCachedRepository> LoadUserRepo([CanBeNull] HttpClient client,
+            [NotNull] UserRepoSource source)
+        {
+            var user_repo = source.Setting;
+            if (user_repo.url is string url)
+            {
+                return await load_remote_repo(
+                    client,
+                    user_repo.headers,
+                    user_repo.local_path,
+                    url
+                );
+            }
+            else
+            {
+                return await load_local_repo(client, user_repo.local_path);
+            }
+        }
+
+        public static async Task<LocalCachedRepository> LoadUndefinedRepo([CanBeNull] HttpClient client,
+            [NotNull] UndefinedSource source)
+        {
+            return await load_local_repo(client, source.Path);
+        }
+
+        static async Task<LocalCachedRepository> load_remote_repo(
+            [CanBeNull] HttpClient client,
+            [CanBeNull] Dictionary<String, String> headers,
+            [NotNull] string path,
+            [NotNull] string remote_url
+        )
+        {
+            return await load_repo(path, client, async () =>
+            {
+                // if local repository not found: try downloading remote one
+                if (client == null) throw new OfflineModeException();
+
+                var may_null = await download_remote_repository(client, remote_url, headers, null);
+                System.Diagnostics.Debug.Assert(may_null != null, nameof(may_null) + " != null");
+                var (remote_repo, etag) = may_null.Value;
+
+                var local_cache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
 
                 if (etag != null)
                 {
-                    localCache.VrcGet = localCache.VrcGet ?? new VrcGetMeta();
-                    localCache.VrcGet.Etag = etag;
+                    local_cache.vrc_get = local_cache.vrc_get ?? new VrcGetMeta();
+                    local_cache.vrc_get.etag = etag;
                 }
 
                 try
                 {
-                    await WriteRepo(path, localCache);
+                    await write_repo(path, local_cache);
                 }
                 catch (Exception e)
                 {
@@ -63,57 +112,55 @@ namespace Anatawa12.VrcGet
                     Debug.LogException(e);
                 }
 
-                return localCache;
+                return local_cache;
             });
         }
 
-        [ItemNotNull]
-        internal async Task<LocalCachedRepository> GetRepo([NotNull] string path,
-            [NotNull] Func<Task<LocalCachedRepository>> ifNotFound)
+        static async Task<LocalCachedRepository> load_local_repo(
+            [CanBeNull] HttpClient client,
+            [NotNull] string path
+        )
         {
-            var entry = _cachedRepos.GetOrAdd(path, _ => new Entry());
-            LocalCachedRepository value;
-
-            // fast path: if no one is holding the semaphore and field is initialized, use it.
-            if (entry.Semaphore.CurrentCount == 1 && (value = Volatile.Read(ref entry.Field)) != null)
-                return value;
-
-            await entry.Semaphore.WaitAsync();
-            try
-            {
-                if (entry.Field != null)
-                    return entry.Field;
-
-                var text = await TryReadFile(path);
-                if (text == null)
-                {
-                    value = await ifNotFound();
-                    Volatile.Write(ref entry.Field, value);
-                    return value;
-                }
-                var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
-                if (_http != null)
-                    await UpdateFromRemote(_http, path, loaded);
-
-                Volatile.Write(ref entry.Field, loaded);
-                return loaded;
-            }
-            finally
-            {
-                entry.Semaphore.Release();
-            }
+            return await load_repo(path, client, () => throw new IOException("repository not found"));
         }
 
-        public Task<LocalCachedRepository> GetUserRepo(UserRepoSetting repo)
+        static async Task<LocalCachedRepository> load_repo(
+            [NotNull] string path,
+            [CanBeNull] HttpClient http,
+            Func<Task<LocalCachedRepository>> if_not_found
+        )
         {
-            if (repo.URL is string url)
+            string text;
+            try
             {
-                return GetOrCreateRepo(repo.LocalPath, url, repo.Name);
+                text = await TryReadFile(path);
             }
-            else
+            catch
             {
-                return GetRepo(repo.LocalPath, () => throw new IOException("Repository not found"));
+                return await if_not_found();
             }
+
+            if (text == null)
+                return await if_not_found();
+
+            var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
+            if (http != null)
+                await update_from_remote(http, path, loaded);
+            return loaded;
+        }
+
+        public LocalCachedRepository[] get_repos() => cached_repos_new.Values.ToArray();
+
+        public IEnumerable<(string, LocalCachedRepository)> get_repo_with_path() =>
+            cached_repos_new.Select(x => (x.Key, x.Value));
+
+        [CanBeNull]
+        internal LocalCachedRepository get_repo(string path) => cached_repos_new.get(path);
+
+        // VPAI: to add pending repo
+        public void AddRepository(string path, LocalCachedRepository cache)
+        {
+            cached_repos_new.Add(path, cache);
         }
     }
 }
