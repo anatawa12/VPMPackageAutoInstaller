@@ -1,12 +1,10 @@
 // ReSharper disable InconsistentNaming
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
@@ -21,12 +19,6 @@ namespace Anatawa12.VrcGet
 
         // the pointer of LocalCachedRepository will never be changed
         [NotNull] readonly Dictionary<string, LocalCachedRepository> cached_repos_new;
-
-        class Entry
-        {
-            public readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
-            public LocalCachedRepository Field;
-        }
 
         public RepoHolder([CanBeNull] HttpClient http)
         {
