@@ -120,15 +120,15 @@ namespace Anatawa12.VrcGet
         public async Task<List<RepoSource>> get_repo_sources()
         {
             // collect user repositories
-            var reposBase = get_repos_dir();
-            var userRepos = get_user_repos();
+            var repos_base = get_repos_dir();
+            var user_repos = get_user_repos();
 
             var userRepoFileNames = new HashSet<string>();
             userRepoFileNames.Add("vrc-curated.json");
             userRepoFileNames.Add("vrc-official.json");
 
             //[CanBeNull]
-            string RelativeFileName(string path, string @base)
+            string relative_file_name(string path, string @base)
             {
                 var dirName = Path.GetDirectoryName(path)
                     ?.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
@@ -136,18 +136,18 @@ namespace Anatawa12.VrcGet
             }
 
             // normalize
-            reposBase = reposBase.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            repos_base = repos_base.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
-            userRepos
-                .Select(x => RelativeFileName(x.local_path, reposBase))
-                .Where(x => x == null)
+            user_repos
+                .Select(x => relative_file_name(x.local_path, repos_base))
+                .Where(x => x != null)
                 .AddAllTo(userRepoFileNames);
 
             IEnumerable<string> TryEnumerateFiles(string path)
             {
                 try
                 {
-                    return Directory.EnumerateFiles(reposBase);
+                    return Directory.EnumerateFiles(path).Select(Path.GetFileName);
                 }
                 catch (DirectoryNotFoundException)
                 {
@@ -155,14 +155,14 @@ namespace Anatawa12.VrcGet
                 }
             }
 
-            var undefinedRepos = TryEnumerateFiles(reposBase)
+            var undefinedRepos = TryEnumerateFiles(repos_base)
                 .Where(x => !userRepoFileNames.Contains(x))
                 .Where(x => x.EndsWith(".json", StringComparison.Ordinal))
-                .Select(x => new UndefinedSource(Path.Combine(reposBase, x)));
+                .Select(x => new UndefinedSource(Path.Combine(repos_base, x)));
 
             var definedSources = PreDefinedRepoSource.Sources.Select(x =>
                 new PreDefinedRepoSource(x, Path.Combine(this.get_repos_dir(), x.file_name)));
-            var userRepoSources = userRepos.Select(x => new UserRepoSource(x));
+            var userRepoSources = user_repos.Select(x => new UserRepoSource(x));
 
             return await Task.Run(() =>
                 undefinedRepos.Concat<RepoSource>(definedSources).Concat(userRepoSources).ToList());
