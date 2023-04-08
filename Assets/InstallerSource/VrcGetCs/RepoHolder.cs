@@ -135,6 +135,8 @@ namespace Anatawa12.VrcGet
             {
                 return await if_not_found();
             }
+            if (text == null)
+                return await if_not_found();
 
             var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
             if (http != null)
