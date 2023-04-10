@@ -27,13 +27,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using Anatawa12.SimpleJson;
 using UnityEditor;
 using UnityEngine;
 
@@ -217,53 +214,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
         }
     }
 
-    static class Extensions
-    {
-        public static void Deconstruct<TKey, TValue>(this KeyValuePair<TKey, TValue> self, out TKey key,
-            out TValue value) => (key, value) = (self.Key, self.Value);
-    }
-
-    sealed class VpaiConfig
-    {
-        public readonly VpaiRepository[] vpmRepositories;
-        public readonly bool includePrerelease;
-        public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
-
-        public VpaiConfig(JsonObj json)
-        {
-            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Select(v => new VpaiRepository(v))?.ToArray();
-            includePrerelease = json.Get("includePrerelease", JsonType.Bool, true);
-            VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
-                                  ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
-                              ?? new Dictionary<string, VrcGet.VersionRange>();
-        }
-    }
-
-    sealed class VpaiRepository
-    {
-        public readonly string url;
-        public readonly Dictionary<string, string> headers;
-
-        public VpaiRepository(object obj)
-        {
-            if (obj is string s)
-            {
-                url = s;
-                headers = new Dictionary<string, string>();
-            }
-            else if (obj is JsonObj json)
-            {
-                url = json.Get("url", JsonType.String);
-                headers = json.Get("vpmDependencies", JsonType.Obj, true)
-                              ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
-                          ?? new Dictionary<string, string>();
-            }
-        }
-    }
-
     static unsafe class NativeUtils
     {
-        private static List<GCHandle> fixedKeep = new List<GCHandle>();
+        private static readonly List<GCHandle> FixedKeep = new List<GCHandle>();
 
         public static bool Call(byte[] bytes)
         {
@@ -300,10 +253,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             finally
             {
 
-                while (fixedKeep.Count != 0)
+                while (FixedKeep.Count != 0)
                 {
-                    fixedKeep[fixedKeep.Count - 1].Free();
-                    fixedKeep.RemoveAt(fixedKeep.Count - 1);
+                    FixedKeep[FixedKeep.Count - 1].Free();
+                    FixedKeep.RemoveAt(FixedKeep.Count - 1);
                 }
             }
         }
@@ -384,7 +337,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 var bytes = UTF8.GetBytes(body);
                 var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-                fixedKeep.Add(handle);
+                FixedKeep.Add(handle);
                 ptr = (byte*)handle.AddrOfPinnedObject();
                 len = (IntPtr)bytes.Length;
             }
