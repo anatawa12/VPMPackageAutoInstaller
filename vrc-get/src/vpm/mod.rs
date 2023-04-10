@@ -9,7 +9,7 @@ use std::future::ready;
 use std::path::{Path, PathBuf};
 use std::task::ready;
 use std::task::Poll::Ready;
-use std::{env, fmt, io};
+use std::{env, fmt, io, path};
 use std::pin::pin;
 
 use futures::future::{join, join_all, try_join_all};
@@ -25,6 +25,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufRead
 use repo_holder::RepoHolder;
 use utils::*;
 use vpm_manifest::VpmManifest;
+use crate::functions::guid_to_asset_path;
 
 use crate::version::{Version, VersionRange};
 use crate::vpm::structs::manifest::{VpmDependency, VpmLockedDependency};
@@ -1129,43 +1130,15 @@ impl UnityProject {
         }
 
         if find_guids.len() != 0 {
-            async fn get_guid(entry: DirEntry) -> Option<(GUID, bool, PathBuf)> {
-                let path = entry.path();
-                if path.extension() != Some(OsStr::new("meta")) || !entry.file_type().await.ok()?.is_file() {
-                    return None
-                }
-                let mut file = BufReader::new(File::open(&path).await.ok()?);
-                let mut buffer = String::new();
-                while file.read_line(&mut buffer).await.ok()? != 0 {
-                    let line = buffer.as_str();
-                    if let Some(guid) = line.strip_prefix("guid: ") {
-                        // current line should be line for guid.
-                        if let Some(guid) = try_parse_guid(guid.trim()){
-                            // remove .meta extension
-                            let mut path = path;
-                            path.set_extension("");
-                            let is_file = metadata(&path).await.ok()?.is_file();
-                            return Some((guid, is_file, path))
-                        }
-                    }
-
-                    buffer.clear()
+            for (guid, is_file) in find_guids {
+                let path = guid_to_asset_path(&guid.0);
+                if path.len() == 0 {
+                    continue
                 }
 
-                None
-            }
-
-            let mut stream = pin!(walk_dir([self.project_dir.join("Packages"), self.project_dir.join("Assets")]).filter_map(get_guid));
-
-            while let Some((guid, is_file_actual, path)) = stream.next().await {
-                if let Some(&is_file) = find_guids.get(&guid) {
-                    if is_file_actual == is_file {
-                        find_guids.remove(&guid);
-                        if is_file {
-                            found_files.insert(path.strip_prefix(&self.project_dir).unwrap().to_owned());
-                        } else {
-                            found_folders.insert(path.strip_prefix(&self.project_dir).unwrap().to_owned());
-                        }
+                if let Ok(metadata) = metadata(&path).await {
+                    if is_file == metadata.is_file() {
+                        found_folders.insert(PathBuf::from(path));
                     }
                 }
             }

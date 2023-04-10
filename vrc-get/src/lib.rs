@@ -43,6 +43,10 @@ mod interlop {
         pub(crate) log_error: extern "system" fn (
             usize, usize, // message
         ) -> bool,
+        pub(crate) guid_to_asset_path: extern "system" fn (
+            &[u8; 128/8], // guid
+            &mut [usize; 2], // result
+        ),
     }
 
     impl NativeCsData {
@@ -154,6 +158,19 @@ mod functions {
 
     pub fn log_error(message: &str) {
         (native_data().log_error)(message.as_ptr() as usize, message.len());
+    }
+
+    pub fn guid_to_asset_path(guid: &[u8; 128 / 8]) -> &'static str {
+        let mut ptrs = [0usize; 2];
+        (native_data().guid_to_asset_path)(guid, &mut ptrs);
+        if ptrs[1] == 0 {
+            return "" // to avoid nullptr on pointer
+        }
+        unsafe {
+            std::str::from_utf8_unchecked(
+                std::slice::from_raw_parts(ptrs[0] as *const u8, ptrs[1])
+            )
+        }
     }
 }
 
