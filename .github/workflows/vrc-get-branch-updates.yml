@@ -1,0 +1,68 @@
+name: update vrc-get/{upstream,moved}
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: 0 0 * * *
+jobs:
+  activation:
+    name: update vrc-get/{upstream,moved}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - run: git config --global user.name "github-actions[bot]" &&
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout moved branch
+        uses: actions/checkout@v3
+        with:
+          ref: vrc-get/moved
+          fetch-depth: 0
+      - name: Clear vrc-get folder
+        run: rm -rf vrc-get
+
+      - name: Checkout upstream branch
+        uses: actions/checkout@v3
+        with:
+          path: vrc-get
+          ref: vrc-get/upstream
+          fetch-depth: 0
+          clean: false
+
+      - name: Update upstream branch
+        run: |-
+          cd vrc-get
+          BEFORE_COMMIT="$(git rev-parse HEAD)"
+          git remote add upstream https://github.com/anatawa12/vrc-get.git
+          git fetch upstream HEAD
+          git reset --hard FETCH_HEAD
+          git push
+          UPSTREAM_COMMIT="$(git rev-parse HEAD)"
+          echo "UPSTREAM_COMMIT=$UPSTREAM_COMMIT" >> "$GITHUB_ENV"
+          if [ "$BEFORE_COMMIT" = "$UPSTREAM_COMMIT"]; then
+            echo "CHANGED=true" >> "$GITHUB_ENV"
+          else
+            echo "CHANGED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Update moved branch
+        if: ${{ fromJson(env.CHANGED) }}
+        run: |-
+          git fetch # fetch upstream changes
+          rm -rf vrc-get/.git # make vrc-get non git repo
+          MOVED_HEAD="$(git rev-parse HEAD)"
+          TREE="$(git write-tree)"
+          echo "merge upstream on $UPSTREAM_COMMIT" | git commit-tree "$TREE" -p "$MOVED_HEAD" -p "$UPSTREAM_COMMIT"
+          git push
+
+      - name: Try to create github pull request
+        if: ${{ fromJson(env.CHANGED) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |-
+          gh pr create \
+            --title "Sync vrc-get from upstream" \
+            --body "Sync vrc-get from upstream" \
+            --head "vrc-get/moved" \
+            || :
