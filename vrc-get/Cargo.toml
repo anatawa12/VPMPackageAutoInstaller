@@ -1,5 +1,5 @@
 [package]
-name = "vrc-get"
+name = "vrc-get-vpai"
 version = "0.2.3-SNAPSHOT"
 edition = "2021"
 
