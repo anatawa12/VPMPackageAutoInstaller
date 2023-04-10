@@ -40,7 +40,7 @@ jobs:
           git push
           UPSTREAM_COMMIT="$(git rev-parse HEAD)"
           echo "UPSTREAM_COMMIT=$UPSTREAM_COMMIT" >> "$GITHUB_ENV"
-          if [ "$BEFORE_COMMIT" = "$UPSTREAM_COMMIT" ]; then
+          if [ "$BEFORE_COMMIT" != "$UPSTREAM_COMMIT" ]; then
             echo "CHANGED=true" >> "$GITHUB_ENV"
           else
             echo "CHANGED=false" >> "$GITHUB_ENV"
