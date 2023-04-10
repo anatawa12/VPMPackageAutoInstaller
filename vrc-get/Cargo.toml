@@ -17,7 +17,12 @@ exclude = [
     ".cargo/**",
 ]
 
+autobins = false
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
 async_zip = { version = "0.0.13", features = ["deflate", "tokio"] }
