@@ -67,4 +67,5 @@ jobs:
             --title "Sync vrc-get from upstream" \
             --body "Sync vrc-get from upstream" \
             --head "vrc-get/moved" \
+            --base "native-vrc-get" \
             || :
