@@ -5,6 +5,7 @@
         <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
         <EnableDefaultItems>false</EnableDefaultItems>
         <RootNamespace>VPMPackageAutoInstaller</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>        
     </PropertyGroup>
 
     <ItemGroup>

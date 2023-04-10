@@ -24,6 +24,22 @@ mod interlop {
     use crate::functions::{display_dialog, NativeDataScope};
 
     #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub(crate) struct RustStr {
+        ptr: *const u8,
+        len: usize,
+    }
+
+    impl RustStr {
+        pub(crate) fn new(str: &str) -> Self {
+            Self {
+                ptr: str.as_ptr(),
+                len: str.len(),
+            }
+        }
+    }
+
+    #[repr(C)]
     pub(crate) struct NativeCsData {
         pub(crate) version: u64,
         version_mismatch: extern "system" fn () -> (),
@@ -34,15 +50,8 @@ mod interlop {
         pub(crate) config_len: usize,
 
         // vtable
-        pub(crate) display_dialog: extern "system" fn (
-            usize, usize, // title
-            usize, usize, // message
-            usize, usize, // ok
-            usize, usize, // cancel
-        ) -> bool,
-        pub(crate) log_error: extern "system" fn (
-            usize, usize, // message
-        ) -> bool,
+        pub(crate) display_dialog: extern "system" fn (title: &RustStr, message: &RustStr, ok: &RustStr, cancel: &RustStr) -> bool,
+        pub(crate) log_error: extern "system" fn (message: &RustStr),
         pub(crate) guid_to_asset_path: extern "system" fn (
             &[u8; 128/8], // guid
             &mut [usize; 2], // result
@@ -114,7 +123,7 @@ mod interlop {
 mod functions {
     use std::cell::UnsafeCell;
     use std::ptr::null;
-    use crate::interlop::NativeCsData;
+    use crate::interlop::{NativeCsData, RustStr};
 
     thread_local! {
         static NATIVE_DATA: UnsafeCell<*const NativeCsData> = UnsafeCell::new(null());
@@ -145,19 +154,15 @@ mod functions {
 
     pub fn display_dialog(title: &str, message: &str, ok: &str, cancel: &str) -> bool {
         (native_data().display_dialog)(
-            title.as_ptr() as usize,
-            title.len(),
-            message.as_ptr() as usize,
-            message.len(),
-            ok.as_ptr() as usize,
-            ok.len(),
-            cancel.as_ptr() as usize,
-            cancel.len(),
+            &RustStr::new(title),
+            &RustStr::new(message),
+            &RustStr::new(ok),
+            &RustStr::new(cancel),
         )
     }
 
     pub fn log_error(message: &str) {
-        (native_data().log_error)(message.as_ptr() as usize, message.len());
+        (native_data().log_error)(&RustStr::new(message));
     }
 
     pub fn guid_to_asset_path(guid: &[u8; 128 / 8]) -> &'static str {

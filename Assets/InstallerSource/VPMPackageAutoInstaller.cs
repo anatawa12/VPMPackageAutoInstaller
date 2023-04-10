@@ -30,6 +30,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
@@ -125,7 +126,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             EditorUtility.DisplayProgressBar("VPAI Installer", "Starting Installer...", 0.0f);
             try
             {
-                return DoInstallImpl().Execute();
+                return DoInstallImpl();
             }
             catch (Exception e)
             {
@@ -139,7 +140,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
         }
 
-        private static async SyncedTask<bool> DoInstallImpl()
+        private static bool DoInstallImpl()
         {
             ShowProgress("Loading VPAI config...", Progress.LoadingConfigJson);
             var configJson = AssetDatabase.GUIDToAssetPath(ConfigGuid);
@@ -149,97 +150,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
-            var config =
-                new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
-
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent",
-                "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
-                "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
-            ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
-            var env = await VrcGet.Environment.load_default(client);
-            ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
-            var unityProject = await VrcGet.UnityProject.find_unity_project(Directory.GetCurrentDirectory());
-            ShowProgress("Downloading package information...", Progress.DownloadingRepositories);
-            await env.load_package_infos();
-
-            ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
-            await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl.url, null, repoUrl.headers)));
-
-            ShowProgress("Resolving dependencies...", Progress.ResolvingDependencies);
-            var includePrerelease = config.includePrerelease;
-
-            var dependencies = config.VpmDependencies.Select(kvp =>
-            {
-                var package = env.find_package_by_name(kvp.Key, v => kvp.Value.matches(v, includePrerelease))
-                    ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
-                return package;
-            }).ToList();
-
-            VrcGet.AddPackageRequest request;
-            try
-            {
-                request = await unityProject.add_package_request(env, dependencies, true);
-            }
-            catch (VrcGet.VrcGetException e)
-            {
-                if (!IsNoPrompt())
-                    EditorUtility.DisplayDialog("ERROR!",
-                        "Installing package failed due to conflicts\n" +
-                        "Please see console for more details", "OK");
-                Debug.LogException(e);
+            if (!NativeUtils.Call(File.ReadAllBytes(configJson)))
                 return false;
-            }
-
-            if (request.locked().Count == 0)
-            {
-                if (!IsNoPrompt())
-                    EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
-                return false;
-            }
-
-            ShowProgress("Prompting to user...", Progress.Prompting);
-            if (!IsNoPrompt())
-            {
-                var confirmMessage = new StringBuilder("You're installing the following packages:");
-
-                foreach (var (name, version) in 
-                         request.locked().Select(x => (Name: x.name(), Version: x.version()))
-                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version)))
-                             .Distinct())
-                    confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
-
-                if (env.PendingRepositories.Count != 0)
-                {
-                    confirmMessage.Append("\n\nThis will add following repositories:");
-                    foreach (var (_, url) in env.PendingRepositories)
-                        // ReSharper disable once PossibleNullReferenceException
-                        confirmMessage.Append('\n').Append(url);
-                }
-
-                if (request.legacy_folders().Count != 0 || request.legacy_files().Count != 0)
-                {
-                    confirmMessage.Append("\n\nYou're also deleting the following files/folders:");
-                    foreach (var path in request.legacy_folders().Concat(request.legacy_files()))
-                        confirmMessage.Append('\n').Append(path);
-                }
-
-                if (!EditorUtility.DisplayDialog("Confirm", confirmMessage.ToString(), "Install", "Cancel"))
-                    return false;
-            }
-
-            // user confirm got. now, edit settings
-
-            ShowProgress("Saving remote repositories...", Progress.SavingRemoteRepositories);
-            await env.SavePendingRepositories();
-
-            ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
-
-            await unityProject.do_add_package_request(env, request);
-
-            ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
-            await unityProject.save();
-            await env.save();
 
             ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
             ResolveUnityPackageManger();
@@ -347,5 +259,145 @@ namespace Anatawa12.VpmPackageAutoInstaller
                           ?? new Dictionary<string, string>();
             }
         }
+    }
+
+    static unsafe class NativeUtils
+    {
+        private static List<GCHandle> fixedKeep = new List<GCHandle>();
+
+        public static bool Call(byte[] bytes)
+        {
+            var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+
+            var data = new NativeCsData
+            {
+                version = 1,
+                version_mismatch = Marshal.GetFunctionPointerForDelegate(version_mismatch),
+
+                config_ptr = handle.AddrOfPinnedObject(),
+                config_len = bytes.Length,
+
+                display_dialog = Marshal.GetFunctionPointerForDelegate(display_dialog),
+                log_error = Marshal.GetFunctionPointerForDelegate(log_error),
+                guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(guid_to_asset_path),
+            };
+
+            try
+            {
+                // TODO find dll based on platform
+                var path = AssetDatabase.GUIDToAssetPath("e22ab70e285a450ab4bca5c1bddc0bae");
+                if (string.IsNullOrEmpty(path)) throw new InvalidOperationException("lib not found");
+                using (var lib = LibLoader.LibLoader.LoadLibrary(path))
+                {
+                    var ptr = lib.GetAddress("vpai_native_entry_point");
+                    Debug.Log($"found vpai_native_entry_point: {ptr}");
+
+                    var nativeEntryPoint = Marshal.GetDelegateForFunctionPointer<vpai_native_entry_point_t>(ptr);
+
+                    return nativeEntryPoint(data);
+                }
+            }
+            finally
+            {
+
+                while (fixedKeep.Count != 0)
+                {
+                    fixedKeep[fixedKeep.Count - 1].Free();
+                    fixedKeep.RemoveAt(fixedKeep.Count - 1);
+                }
+            }
+        }
+
+        private static void VersionMismatch()
+        {
+            EditorUtility.DisplayDialog("ERROR", "VPAI Internal Error! Installer is broken or THIS IS A BUG!", "OK");
+        }
+
+        private static bool DisplayDialog(in RustStr title, in RustStr message, in RustStr ok, in RustStr cancel)
+        {
+            return EditorUtility.DisplayDialog(title.AsString(), message.AsString(), ok.AsString(), cancel.AsString());
+        }
+
+        private static void LogError(in RustStr message)
+        {
+            Debug.LogError(message.AsString());
+        }
+
+        private static void GuidToAssetPath(in RustGUID guid, out RustStr path)
+        {
+            var chars = new char[128/4];
+            for (int i = 0; i < 128 / 8; i++)
+            {
+                var b = guid.bytes[i];
+                chars[i * 2 + 0] = "0123456789abcdef"[b >> 4];
+                chars[i * 2 + 0] = "0123456789abcdef"[b & 0xF];
+            }
+
+            path = new RustStr(AssetDatabase.GUIDToAssetPath(new string(chars)));
+        }
+
+
+
+        // ReSharper disable InconsistentNaming
+        private static readonly NativeCsData.version_mismatch_t version_mismatch = VersionMismatch;
+        private static readonly NativeCsData.display_dialog_t display_dialog = DisplayDialog;
+        private static readonly NativeCsData.log_error_t log_error = LogError;
+        private static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
+
+        delegate bool vpai_native_entry_point_t(in NativeCsData data);
+
+        struct NativeCsData
+        {
+            public ulong version;
+            public IntPtr version_mismatch;
+            // end of version independent part
+
+            // config json info. might not be utf8
+            public IntPtr config_ptr;
+            public int config_len;
+            // config json info. might not be utf8
+            public IntPtr display_dialog;
+            public IntPtr log_error;
+            public IntPtr guid_to_asset_path;
+
+
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void version_mismatch_t();
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate bool display_dialog_t(in RustStr title, in RustStr message, in RustStr ok, in RustStr cancel);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void log_error_t(in RustStr messagePtr);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void guid_to_asset_path_t(in RustGUID guid, out RustStr path);
+        }
+
+        struct RustGUID {
+            public fixed byte bytes[128/8];
+        }
+
+        readonly struct RustStr
+        {
+            private readonly byte *ptr;
+            private readonly IntPtr len;
+
+            public RustStr(string body)
+            {
+                var bytes = UTF8.GetBytes(body);
+                var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                fixedKeep.Add(handle);
+                ptr = (byte*)handle.AddrOfPinnedObject();
+                len = (IntPtr)bytes.Length;
+            }
+
+            public string AsString()
+            {
+                if ((ulong) len >= int.MaxValue)
+                    throw new InvalidOperationException("str too big to be string");
+                return UTF8.GetString(ptr, (int)len);
+            }
+
+            private static readonly Encoding UTF8 = new UTF8Encoding(false);
+        }
+        // ReSharper restore InconsistentNaming
     }
 }
