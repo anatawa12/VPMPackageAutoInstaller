@@ -24,6 +24,13 @@ autobins = false
 [lib]
 crate-type = ["cdylib"]
 
+# profile for code size
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+
 [dependencies]
 async_zip = { version = "0.0.13", features = ["deflate", "tokio"] }
 clap = { version = "4.2.1", features = ["derive"] }
