@@ -81,7 +81,7 @@ mod interlop {
             return false;
         }
 
-        let _ = NativeDataScope::new(data);
+        let scope = NativeDataScope::new(data);
 
         match catch_unwind(move || {
             let panic = match catch_unwind(|| vpai_native_impl(data)) {
@@ -115,6 +115,8 @@ mod interlop {
             "OK",
             "",
         );
+
+        drop(scope);
 
         false
     }
