@@ -54,6 +54,7 @@ pub struct Environment {
     repo_cache: RepoHolder,
     // TODO: change type for user package info
     user_packages: Vec<(PathBuf, PackageJson)>,
+    pending_repositories: Vec<(PathBuf, Url)>,
     settings_changed: bool,
 }
 
@@ -74,6 +75,7 @@ impl Environment {
             global_dir: folder,
             repo_cache: RepoHolder::new(http),
             user_packages: Vec::new(),
+            pending_repositories: Vec::new(),
             settings_changed: false,
         })
     }
@@ -355,27 +357,31 @@ impl Environment {
         Ok(())
     }
 
-    pub async fn add_remote_repo(
+    pub fn pending_repositories(&self) -> &[(PathBuf, Url)] {
+        &self.pending_repositories
+    }
+
+    pub async fn add_pending_repository(
         &mut self,
         url: Url,
-        name: Option<&str>,
+        //name: Option<&str>,
         headers: IndexMap<String, String>,
-    ) -> Result<(), AddRepositoryErr> {
+    ) -> io::Result<()> {
         let user_repos = self.get_user_repos()?;
         if user_repos
             .iter()
             .any(|x| x.url.as_deref() == Some(url.as_ref()))
         {
-            return Err(AddRepositoryErr::AlreadyAdded);
+            return Ok(())
         }
         let Some(http) = &self.http else {
-            return Err(AddRepositoryErr::OfflineMode);
+            unreachable!()
         };
 
         let (remote_repo, etag) = download_remote_repository(&http, url.clone(), Some(&headers), None)
             .await?
             .expect("logic failure: no etag");
-        let repo_name = name.or(remote_repo.name()).map(str::to_owned);
+        //let repo_name = name.or(remote_repo.name()).map(str::to_owned);
 
         let repo_id = remote_repo.id().map(str::to_owned);
 
@@ -384,7 +390,7 @@ impl Environment {
                 .iter()
                 .any(|x| x.id.as_deref() == Some(repo_id))
             {
-                return Err(AddRepositoryErr::AlreadyAdded);
+                return Ok(())
             }
         }
 
@@ -397,6 +403,31 @@ impl Environment {
                 .get_or_insert_with(Default::default)
                 .etag = etag;
         }
+
+        // use guid for now, try id later
+        let local_path = self.get_repos_dir().joined(format!("{}.json", uuid::Uuid::new_v4()));
+        self.repo_cache.add_repository(local_path.clone(), local_cache);
+        self.pending_repositories.push((local_path, url));
+        Ok(())
+    }
+
+    pub async fn save_pending_repositories(&mut self) -> io::Result<()> {
+        let repos = std::mem::take(&mut self.pending_repositories);
+        for (path, url) in repos {
+            self.save_pending_repository(path, url).await?;
+        }
+        Ok(())
+    }
+
+    async fn save_pending_repository(
+        &mut self,
+        local_path: PathBuf,
+        url: Url,
+    ) -> io::Result<()> {
+        let local_cache = self.repo_cache.get_repo(&local_path)
+            .expect("logic failure: local cache");
+        let repo_id = local_cache.id().map(|x| x.to_owned());
+        let repo_name = local_cache.name().map(|x| x.to_owned());
 
         create_dir_all(self.get_repos_dir()).await?;
 
@@ -429,10 +460,7 @@ impl Environment {
         // and then use 
         let (mut file, local_path) = match file {
             Some(file) => file,
-            None => {
-                let local_path = self.get_repos_dir().joined(format!("{}.json", uuid::Uuid::new_v4()));
-                (File::create(&local_path).await?, local_path)
-            }
+            None => (File::create(&local_path).await?, local_path)
         };
 
         file.write_all(&to_json_vec(&local_cache)?).await?;

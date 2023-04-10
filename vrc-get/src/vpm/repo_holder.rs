@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use super::*;
 use std::collections::HashMap;
 use std::future::Future;
@@ -154,5 +155,17 @@ impl RepoHolder {
 
     pub(crate) fn get_repo(&self, path: &Path) -> Option<&LocalCachedRepository> {
         self.cached_repos_new.get(path)
+    }
+
+    pub(crate) fn add_repository(&mut self, path: PathBuf, repo: LocalCachedRepository) -> &LocalCachedRepository {
+        match self.cached_repos_new.entry(path) {
+            Entry::Occupied(mut e) => {
+                e.insert(repo);
+                e.into_mut()
+            }
+            Entry::Vacant(e) => {
+                e.insert(repo)
+            }
+        }
     }
 }
