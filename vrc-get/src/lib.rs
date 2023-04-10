@@ -83,35 +83,22 @@ mod interlop {
 
         let scope = NativeDataScope::new(data);
 
-        match catch_unwind(move || {
-            let panic = match catch_unwind(|| vpai_native_impl(data)) {
-                Ok(r) => return r,
-                Err(panic) => panic,
-            };
-
-            let message = match panic.downcast_ref::<&'static str>() {
-                Some(s) => *s,
-                None => match panic.downcast_ref::<String>() {
-                    Some(s) => &s[..],
-                    None => "Box<dyn Any>",
-                },
-            };
-
-            display_dialog(
-                "ERROR",
-                &format!("Unexpected error: {}", message),
-                "OK",
-                "",
-            );
-            false
-        }) {
+        let panic = match catch_unwind(|| vpai_native_impl(data)) {
             Ok(r) => return r,
-            Err(_second_panic) => (),
-        }
+            Err(panic) => panic,
+        };
+
+        let message = match panic.downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match panic.downcast_ref::<String>() {
+                Some(s) => &s[..],
+                None => "Box<dyn Any>",
+            },
+        };
 
         display_dialog(
             "ERROR",
-            "unrecoverable error in VPAI Installer",
+            &format!("Unexpected error: {}", message),
             "OK",
             "",
         );
