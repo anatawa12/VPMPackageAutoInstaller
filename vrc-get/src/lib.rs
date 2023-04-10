@@ -6,6 +6,7 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Deserializer};
 use serde::de::{Error, MapAccess, Visitor};
 use serde::de::value::{MapAccessDeserializer, StrDeserializer};
+use crate::functions::{display_dialog, log_error};
 use crate::interlop::NativeCsData;
 use crate::version::VersionRange;
 use crate::vpm::{AddPackageErr, Environment, UnityProject, VersionSelector};
@@ -20,6 +21,7 @@ const CURRENT_VERSION: u64 = 1;
 mod interlop {
     use std::panic::catch_unwind;
     use crate::{CURRENT_VERSION, vpai_native_impl};
+    use crate::functions::{display_dialog, NativeDataScope};
 
     #[repr(C)]
     pub(crate) struct NativeCsData {
@@ -28,17 +30,17 @@ mod interlop {
         // end of version independent part
 
         // config json info. might not be utf8
-        config_ptr: *const u8,
-        config_len: usize,
+        pub(crate) config_ptr: *const u8,
+        pub(crate) config_len: usize,
 
         // vtable
-        display_dialog: extern "system" fn (
+        pub(crate) display_dialog: extern "system" fn (
             usize, usize, // title
             usize, usize, // message
             usize, usize, // ok
             usize, usize, // cancel
         ) -> bool,
-        log_error: extern "system" fn (
+        pub(crate) log_error: extern "system" fn (
             usize, usize, // message
         ) -> bool,
     }
@@ -56,23 +58,6 @@ mod interlop {
                 )
             }
         }
-
-        pub fn display_dialog(&self, title: &str, message: &str, ok: &str, cancel: &str) -> bool {
-            (self.display_dialog)(
-                title.as_ptr() as usize,
-                title.len(),
-                message.as_ptr() as usize,
-                message.len(),
-                ok.as_ptr() as usize,
-                ok.len(),
-                cancel.as_ptr() as usize,
-                cancel.len(),
-            )
-        }
-
-        pub fn log_error(&self, message: &str) {
-            (self.log_error)(message.as_ptr() as usize, message.len());
-        }
     }
 
     #[no_mangle]
@@ -82,6 +67,8 @@ mod interlop {
             data.version_mismatch();
             return false;
         }
+
+        let _ = NativeDataScope::new(data);
 
         match catch_unwind(move || {
             let panic = match catch_unwind(|| vpai_native_impl(data)) {
@@ -97,7 +84,7 @@ mod interlop {
                 },
             };
 
-            data.display_dialog(
+            display_dialog(
                 "ERROR",
                 &format!("Unexpected error: {}", message),
                 "OK",
@@ -109,7 +96,7 @@ mod interlop {
             Err(_second_panic) => (),
         }
 
-        data.display_dialog(
+        display_dialog(
             "ERROR",
             "unrecoverable error in VPAI Installer",
             "OK",
@@ -120,13 +107,62 @@ mod interlop {
     }
 }
 
+mod functions {
+    use std::cell::UnsafeCell;
+    use std::ptr::null;
+    use crate::interlop::NativeCsData;
+
+    thread_local! {
+        static NATIVE_DATA: UnsafeCell<*const NativeCsData> = UnsafeCell::new(null());
+    }
+
+    pub(crate)  struct NativeDataScope(());
+
+    impl NativeDataScope {
+        pub fn new(data: &NativeCsData) -> NativeDataScope {
+            NATIVE_DATA.with(|x| unsafe { *x.get() = data });
+            NativeDataScope(())
+        }
+    }
+
+    impl Drop for NativeDataScope {
+        fn drop(&mut self) {
+            NATIVE_DATA.with(|x| unsafe { *x.get() = null() });
+        }
+    }
+
+    fn native_data() -> &'static NativeCsData {
+        unsafe {
+            let ptr = NATIVE_DATA.with(|x| unsafe { *x.get() });
+            assert_ne!(ptr, null(), "NATIVE DATA NOT SET");
+            &*ptr
+        }
+    }
+
+    pub fn display_dialog(title: &str, message: &str, ok: &str, cancel: &str) -> bool {
+        (native_data().display_dialog)(
+            title.as_ptr() as usize,
+            title.len(),
+            message.as_ptr() as usize,
+            message.len(),
+            ok.as_ptr() as usize,
+            ok.len(),
+            cancel.as_ptr() as usize,
+            cancel.len(),
+        )
+    }
+
+    pub fn log_error(message: &str) {
+        (native_data().log_error)(message.as_ptr() as usize, message.len());
+    }
+}
 
 fn vpai_native_impl(data: &NativeCsData) -> bool {
     match vpai_native_impl_async(data) {
         Ok(r) => r,
         Err((e, context)) => {
-            data.log_error(&format!("Error: {}, {}", context, e));
-            data.display_dialog(
+            log_error(&format!("Error: {}, {}", context, e));
+            display_dialog(
                 "ERROR", &format!("Error installing packages: {}, {}", context, e),
                 "ok", "");
             false
@@ -138,7 +174,7 @@ fn vpai_native_impl(data: &NativeCsData) -> bool {
 async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error, &'static str)> {
     let Some(config) = std::str::from_utf8(data.config_bytes()).ok()
         .and_then(|x| serde_json::from_str::<VpaiConfig>(x).ok()) else {
-        data.display_dialog("ERROR", "invalid config.json", "OK", "");
+        display_dialog("ERROR", "invalid config.json", "OK", "");
         return Ok(false);
     };
     let client = Client::builder()
@@ -161,7 +197,7 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
     let mut dependencies = Vec::with_capacity(config.vpm_dependencies.len());
     for (pkg, range) in config.vpm_dependencies {
         let Some(found) = env.find_package_by_name(&pkg, VersionSelector::Range(&range)) else {
-            data.display_dialog("ERROR", &format!("Package not found: {} version {}", pkg, range), "OK", "");
+            display_dialog("ERROR", &format!("Package not found: {} version {}", pkg, range), "OK", "");
             return Ok(false)
         };
         dependencies.push(found)
@@ -171,13 +207,13 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
         Ok(request) => request,
         Err(AddPackageErr::Io(e)) => return Err((e, "finding legacy assets")),
         Err(e) => {
-            data.display_dialog("ERROR", &e.to_string(), "OK", "");
+            display_dialog("ERROR", &e.to_string(), "OK", "");
             return Ok(false)
         },
     };
 
     if request.locked().len() == 0 {
-        data.display_dialog("Nothing TO DO!", "All Packages are Installed!", "OK", "");
+        display_dialog("Nothing TO DO!", "All Packages are Installed!", "OK", "");
         return Ok(false);
     }
 
@@ -212,7 +248,7 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
             }
         }
 
-        if data.display_dialog("Confirm", &confirm_message, "Install", "Cancel") {
+        if display_dialog("Confirm", &confirm_message, "Install", "Cancel") {
             return Ok(false);
         }
     }
