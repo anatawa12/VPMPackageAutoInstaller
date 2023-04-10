@@ -53,7 +53,8 @@ jobs:
           rm -rf vrc-get/.git # make vrc-get non git repo
           MOVED_HEAD="$(git rev-parse HEAD)"
           TREE="$(git write-tree)"
-          echo "merge upstream on $UPSTREAM_COMMIT" | git commit-tree "$TREE" -p "$MOVED_HEAD" -p "$UPSTREAM_COMMIT"
+          NEW_COMMIT="$(echo "merge upstream on $UPSTREAM_COMMIT" | git commit-tree "$TREE" -p "$MOVED_HEAD" -p "$UPSTREAM_COMMIT")"
+          git reset --hard "$NEW_COMMIT"
           git push
 
       - name: Try to create github pull request
