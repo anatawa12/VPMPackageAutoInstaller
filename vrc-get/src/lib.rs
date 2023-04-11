@@ -194,7 +194,8 @@ mod interlop {
         // memory util (for rust memory)
         pub(crate) free_cs_memory: extern "system" fn (handle: usize),
         // http client
-        pub(crate) web_request_new_get: extern "system" fn (url: &RsStr) -> CsHandle,
+        pub(crate) web_client_new: extern "system" fn (version: &RsStr) -> CsHandle,
+        pub(crate) web_request_new_get: extern "system" fn (this: CsHandleRef, url: &RsStr) -> CsHandle,
         pub(crate) web_request_add_header: extern "system" fn (this: CsHandleRef, name: &RsStr, value: &RsStr, err: &mut CsStr),
         // important: not ref: rust throw away the ownership
         pub(crate) web_request_send: extern "system" fn (this: CsHandle, result: &mut CsHandle, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),

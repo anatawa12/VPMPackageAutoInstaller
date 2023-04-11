@@ -223,7 +223,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
     static class NativeUtils
     {
         private static readonly List<GCHandle> FixedKeep = new List<GCHandle>();
-        private static HttpClient _client;
 
         public static bool Call(byte[] bytes)
         {
@@ -241,6 +240,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 log_error = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.log_error),
                 guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.guid_to_asset_path),
                 free_cs_memory = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.free_cs_memory),
+                web_client_new = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_client_new),
                 web_request_new_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_new_get),
                 web_request_add_header = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_add_header),
                 web_request_send = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_send),
@@ -251,12 +251,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 web_headers_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_headers_get),
                 web_async_reader_read = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_async_reader_read),
             };
-
-            // TODO: version from rust
-            _client = new HttpClient();
-            _client.DefaultRequestHeaders.Add("User-Agent", 
-                "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
-                "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
 
             try
             {
@@ -303,11 +297,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
             return message;
         }
 
-        private static void FreeCsMemory(IntPtr handle)
-        {
-            OwnHandle<object>(handle);
-        }
-
         static unsafe class UnsafeCallbacks
         {
             private static void VersionMismatch()
@@ -340,15 +329,30 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 path = CsSlice.Of(AssetDatabase.GUIDToAssetPath(new string(chars)));
             }
 
-            private static IntPtr WebRequestNewGet(in RsSlice url) =>
-                NewHandle(new HttpRequestMessage(HttpMethod.Get, url.AsString()));
+            private static void FreeCsMemory(IntPtr handle)
+            {
+                OwnHandle<object>(handle);
+            }
+
+            private static IntPtr WebClientNew(in RsSlice version)
+            {
+                var client = new HttpClient();
+                client.DefaultRequestHeaders.Add("User-Agent", 
+                    "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
+                    $"vrc-get/{version.AsString()} (github:anatawa12/vrc-get VPAI fork)");
+                return NewHandle<HttpClient>(client);
+            }
+
+            private static IntPtr WebRequestNewGet(IntPtr handle, in RsSlice url) =>
+                NewHandle(new WebRequest(HandleRef<HttpClient>(handle),
+                    new HttpRequestMessage(HttpMethod.Get, url.AsString())));
 
             private static void WebRequestAddHeader(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err)
             {
                 try
                 {
                     err = default;
-                    HandleRef<HttpRequestMessage>(handle).Headers.Add(name.AsString(), value.AsString());
+                    HandleRef<WebRequest>(handle).Request.Headers.Add(name.AsString(), value.AsString());
                 }
                 catch (Exception e)
                 {
@@ -391,6 +395,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public static readonly NativeCsData.log_error_t log_error = LogError;
             public static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
             public static readonly NativeCsData.free_cs_memory_t free_cs_memory = FreeCsMemory;
+            public static readonly NativeCsData.web_client_new_t web_client_new = WebClientNew;
             public static readonly NativeCsData.web_request_new_get_t web_request_new_get = WebRequestNewGet;
             public static readonly NativeCsData.web_request_add_header_t web_request_add_header = WebRequestAddHeader;
             // important: not ref: rust throw away the ownership
@@ -436,7 +441,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 // important: not ref: rust throw away the ownership
                 Async(err, context, callback, async () =>
                 {
-                    var wait = await _client.SendAsync(OwnHandle<HttpRequestMessage>(handle));
+                    var request = OwnHandle<WebRequest>(handle);
+                    var wait = await request.Client.SendAsync(request.Request);
                     unsafe
                     {
                         *(IntPtr*)result = NewHandle<HttpResponseMessage>(wait);
@@ -474,6 +480,18 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
         }
 
+        class WebRequest
+        {
+            public readonly HttpClient Client;
+            public readonly HttpRequestMessage Request;
+
+            public WebRequest(HttpClient client, HttpRequestMessage request)
+            {
+                Client = client;
+                Request = request;
+            }
+        }
+
         class AsyncReader
         {
             public readonly Task<Stream> Task;
@@ -503,6 +521,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public IntPtr log_error;
             public IntPtr guid_to_asset_path;
             public IntPtr free_cs_memory;
+            public IntPtr web_client_new;
             public IntPtr web_request_new_get;
             public IntPtr web_request_add_header;
             public IntPtr web_request_send;
@@ -526,7 +545,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void free_cs_memory_t(IntPtr handle);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr web_request_new_get_t(in RsSlice url);
+            public delegate IntPtr web_client_new_t(in RsSlice version);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr web_request_new_get_t(IntPtr handle, in RsSlice url);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void web_request_add_header_t(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err);
             // important: not ref: rust throw away the ownership

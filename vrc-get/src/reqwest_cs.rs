@@ -2,13 +2,14 @@ use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{Context, Poll, ready, Waker};
 use std::task::Poll::{Pending, Ready};
 use futures::Stream;
 use serde::de::DeserializeOwned;
 pub use url::Url;
-use crate::interlop::{CsHandle, CsHandleRef, CsSlice, CsStr, native_data, RsStr};
+use crate::interlop::{CsHandle, CsSlice, CsStr, native_data, RsStr};
 
 macro_rules! async_wrapper {
     (
@@ -154,15 +155,21 @@ macro_rules! async_wrapper {
 // client instance is shared
 #[derive(Clone)]
 pub struct Client {
-    _unused: (),
+    ptr: Rc<CsHandle>
 }
 
 impl Client {
+    pub fn new() -> Self {
+        Self {
+            ptr: Rc::new((native_data().web_client_new)(&RsStr::new(env!("CARGO_PKG_VERSION"))))
+        }
+    }
+
     pub fn get(&self, url: impl IntoUrl) -> Request {
         match url.into_url() {
             Ok(url) => {
                 Request {
-                    ptr: Ok((native_data().web_request_new_get)(&RsStr::new(url.as_str())))
+                    ptr: Ok((native_data().web_request_new_get)((*self.ptr).as_ref(), &RsStr::new(url.as_str())))
                 }
             }
             Err(err) => {
@@ -178,13 +185,6 @@ impl Debug for Client {
     }
 }
 
-impl Client {
-    pub fn new() -> Self {
-        Self {
-            _unused: ()
-        }
-    }
-}
 
 pub struct Request {
     ptr: Result<CsHandle>,
@@ -286,7 +286,7 @@ impl Response {
         }
     }
 
-    pub async fn json<T : DeserializeOwned>(&self) -> Result<T> {
+    pub async fn json<T : DeserializeOwned>(self) -> Result<T> {
         serde_json::from_slice(&self.bytes().await?)
             .map_err(Error::json)
     }
