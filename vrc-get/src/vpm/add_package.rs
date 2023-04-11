@@ -4,7 +4,7 @@ use std::io::SeekFrom;
 use std::path::{Component, Path, PathBuf};
 use futures::TryStreamExt;
 use indexmap::IndexMap;
-use reqwest::Client;
+use crate::reqwest::Client;
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};

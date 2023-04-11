@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::io;
 use indexmap::IndexMap;
-use reqwest::{Client, Url};
 use serde::{Deserialize, Deserializer};
 use serde::de::{Error, MapAccess, Visitor};
 use serde::de::value::{MapAccessDeserializer, StrDeserializer};
-use crate::functions::{display_dialog, log_error};
+use url::Url;
+use crate::interlop::{display_dialog, log_error};
 use crate::interlop::NativeCsData;
 use crate::version::VersionRange;
 use crate::vpm::{AddPackageErr, Environment, UnityProject, VersionSelector};
@@ -15,27 +15,129 @@ use crate::vpm::{AddPackageErr, Environment, UnityProject, VersionSelector};
 #[allow(dead_code)]
 mod vpm;
 mod version;
+mod reqwest_cs;
+use reqwest_cs as reqwest;
 
 const CURRENT_VERSION: u64 = 1;
 
 mod interlop {
     use std::panic::catch_unwind;
     use crate::{CURRENT_VERSION, vpai_native_impl};
-    use crate::functions::{display_dialog, NativeDataScope};
+    use std::cell::UnsafeCell;
+    use std::ops::Deref;
+    use std::ptr::null;
 
+    // C# owned slice
     #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub(crate) struct RustStr {
-        ptr: *const u8,
+    pub struct CsSlice<T> {
+        handle: usize,
+        ptr: *const T,
         len: usize,
     }
 
-    impl RustStr {
-        pub(crate) fn new(str: &str) -> Self {
+    impl <T> CsSlice<T> {
+        pub fn invalid() -> Self {
+            Self {
+                handle: 0,
+                ptr: std::ptr::NonNull::<T>::dangling().as_ptr(),
+                len: 0,
+            }
+        }
+
+        pub fn is_invalid(&self) -> bool {
+            self.handle == 0
+        }
+
+        pub fn take(&mut self) -> CsSlice<T> {
+            std::mem::replace(self, Self::invalid())
+        }
+
+        pub fn as_slice(&self) -> &[T] {
+            unsafe {
+                std::slice::from_raw_parts(self.ptr, self.len)
+            }
+        }
+    }
+
+    impl <T> Deref for CsSlice<T> {
+        type Target = [T];
+
+        fn deref(&self) -> &Self::Target {
+            self.as_slice()
+        }
+    }
+
+    impl <T> AsRef<[T]> for CsSlice<T> {
+        fn as_ref(&self) -> &[T] {
+            self.as_slice()
+        }
+    }
+
+    impl <T> Drop for CsSlice<T> {
+        fn drop(&mut self) {
+            (native_data().free_cs_memory)(self.handle)
+        }
+    }
+
+    // C# owned string
+    #[repr(transparent)]
+    pub(crate) struct CsStr {
+        slice: CsSlice<u8>,
+    }
+
+    impl CsStr {
+        pub fn invalid() -> Self {
+            Self { slice: CsSlice::invalid() }
+        }
+
+        pub fn is_invalid(&self) -> bool {
+            self.slice.is_invalid()
+        }
+
+        pub fn as_str(&self) -> &str {
+            unsafe { std::str::from_utf8_unchecked(self.slice.as_slice()) }
+        }
+    }
+
+    impl Deref for CsStr {
+        type Target = str;
+
+        fn deref(&self) -> &Self::Target {
+            self.as_str()
+        }
+    }
+
+    impl AsRef<str> for CsStr {
+        fn as_ref(&self) -> &str {
+            self.as_str()
+        }
+    }
+
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub(crate) struct RsSlice<T> {
+        ptr: *const T,
+        len: usize,
+    }
+
+    impl <T> RsSlice<T> {
+        pub(crate) fn new(str: &[T]) -> Self {
             Self {
                 ptr: str.as_ptr(),
                 len: str.len(),
             }
+        }
+    }
+
+    #[repr(transparent)]
+    #[derive(Copy, Clone)]
+    pub(crate) struct RsStr {
+        _slice: RsSlice<u8>,
+    }
+
+    impl RsStr {
+        pub(crate) fn new(str: &str) -> Self {
+            Self { _slice: RsSlice::new(str.as_bytes()) }
         }
     }
 
@@ -50,12 +152,24 @@ mod interlop {
         pub(crate) config_len: usize,
 
         // vtable
-        pub(crate) display_dialog: extern "system" fn (title: &RustStr, message: &RustStr, ok: &RustStr, cancel: &RustStr) -> bool,
-        pub(crate) log_error: extern "system" fn (message: &RustStr),
+        pub(crate) display_dialog: extern "system" fn (title: &RsStr, message: &RsStr, ok: &RsStr, cancel: &RsStr) -> bool,
+        pub(crate) log_error: extern "system" fn (message: &RsStr),
         pub(crate) guid_to_asset_path: extern "system" fn (
             &[u8; 128/8], // guid
             &mut [usize; 2], // result
         ),
+        // memory util (for rust memory)
+        pub(crate) free_cs_memory: extern "system" fn (handle: usize),
+        // http client
+        pub(crate) web_request_new: extern "system" fn (url: &RsStr) -> usize,
+        pub(crate) web_request_add_header: extern "system" fn (this: usize, name: &RsStr, value: &RsStr, err: &mut CsStr),
+        pub(crate) web_request_send: extern "system" fn (this: usize, err: &mut CsStr) -> usize,
+        pub(crate) web_response_status: extern "system" fn (this: usize) -> u32,
+        pub(crate) web_response_headers: extern "system" fn (this: usize) -> usize,
+        pub(crate) web_response_async_reader: extern "system" fn (this: usize) -> usize,
+        pub(crate) web_response_bytes_async: extern "system" fn (this: usize, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_headers_get: extern "system" fn (this: usize, name: &RsStr, slice: &mut CsStr),
+        pub(crate) web_async_reader_read: extern "system" fn (this: usize, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
     }
 
     impl NativeCsData {
@@ -107,18 +221,12 @@ mod interlop {
 
         false
     }
-}
-
-mod functions {
-    use std::cell::UnsafeCell;
-    use std::ptr::null;
-    use crate::interlop::{NativeCsData, RustStr};
 
     thread_local! {
         static NATIVE_DATA: UnsafeCell<*const NativeCsData> = UnsafeCell::new(null());
     }
 
-    pub(crate)  struct NativeDataScope(());
+    struct NativeDataScope(());
 
     impl NativeDataScope {
         pub fn new(data: &NativeCsData) -> NativeDataScope {
@@ -133,9 +241,9 @@ mod functions {
         }
     }
 
-    fn native_data() -> &'static NativeCsData {
+    pub(crate) fn native_data() -> &'static NativeCsData {
         unsafe {
-            let ptr = NATIVE_DATA.with(|x| unsafe { *x.get() });
+            let ptr = NATIVE_DATA.with(|x|  *x.get());
             assert_ne!(ptr, null(), "NATIVE DATA NOT SET");
             &*ptr
         }
@@ -143,15 +251,15 @@ mod functions {
 
     pub fn display_dialog(title: &str, message: &str, ok: &str, cancel: &str) -> bool {
         (native_data().display_dialog)(
-            &RustStr::new(title),
-            &RustStr::new(message),
-            &RustStr::new(ok),
-            &RustStr::new(cancel),
+            &RsStr::new(title),
+            &RsStr::new(message),
+            &RsStr::new(ok),
+            &RsStr::new(cancel),
         )
     }
 
     pub fn log_error(message: &str) {
-        (native_data().log_error)(&RustStr::new(message));
+        (native_data().log_error)(&RsStr::new(message));
     }
 
     pub fn guid_to_asset_path(guid: &[u8; 128 / 8]) -> &'static str {
@@ -188,13 +296,7 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
         display_dialog("ERROR", "invalid config.json", "OK", "");
         return Ok(false);
     };
-    let client = Client::builder()
-            .user_agent(concat!(
-            "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) ",
-            "vrc-get/", env!("CARGO_PKG_VERSION"), 
-            " (github:anatawa12/vrc-get; VPAI is based on vrc-get but modified)"))
-            .build()
-            .expect("building client");
+    let client = reqwest_cs::Client::new();
     let mut env = Environment::load_default(Some(client)).await.context("loading env")?;
     let cwd = std::env::current_dir().context("getting cwd")?;
     let mut unity_project = UnityProject::find_unity_project(Some(cwd)).await.context("loading unity project")?;

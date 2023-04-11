@@ -28,7 +28,7 @@ pub(crate) trait MapResultExt<T> {
     fn err_mapped(self) -> Result<T, Self::Output>;
 }
 
-impl<T> MapResultExt<T> for Result<T, reqwest::Error> {
+impl<T> MapResultExt<T> for Result<T, crate::reqwest::Error> {
     type Output = io::Error;
 
     fn err_mapped(self) -> Result<T, Self::Output> {

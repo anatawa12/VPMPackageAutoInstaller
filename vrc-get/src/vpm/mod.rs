@@ -17,7 +17,7 @@ use futures::prelude::*;
 use futures::stream::FuturesUnordered;
 use indexmap::IndexMap;
 use itertools::{Itertools as _};
-use reqwest::{Client, IntoUrl, Url};
+use crate::reqwest_cs::{Client, IntoUrl, Url};
 use serde_json::{from_value, to_value, Map, Value};
 use tokio::fs::{create_dir_all, read_dir, remove_dir_all, remove_file, DirEntry, File, metadata};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -25,7 +25,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufRead
 use repo_holder::RepoHolder;
 use utils::*;
 use vpm_manifest::VpmManifest;
-use crate::functions::guid_to_asset_path;
+use crate::interlop::guid_to_asset_path;
 
 use crate::version::{Version, VersionRange};
 use crate::vpm::structs::manifest::{VpmDependency, VpmLockedDependency};
@@ -719,8 +719,7 @@ pub(crate) async fn download_remote_repository(
     let etag = response
         .headers()
         .get("Etag")
-        .and_then(|x| x.to_str().ok())
-        .map(str::to_owned);
+        .and_then(|x| x.to_string().ok());
 
     let json = response.json().await.err_mapped()?;
 
