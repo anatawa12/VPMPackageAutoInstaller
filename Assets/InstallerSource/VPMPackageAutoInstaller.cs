@@ -26,13 +26,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
-using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 [assembly: InternalsVisibleTo("com.anatawa12.vpm-package-auto-installer.tester")]
 
@@ -214,9 +220,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
         }
     }
 
-    static unsafe class NativeUtils
+    static class NativeUtils
     {
         private static readonly List<GCHandle> FixedKeep = new List<GCHandle>();
+        private static HttpClient _client;
 
         public static bool Call(byte[] bytes)
         {
@@ -225,15 +232,31 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var data = new NativeCsData
             {
                 version = 1,
-                version_mismatch = Marshal.GetFunctionPointerForDelegate(version_mismatch),
+                version_mismatch = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.version_mismatch),
 
                 config_ptr = handle.AddrOfPinnedObject(),
                 config_len = bytes.Length,
 
-                display_dialog = Marshal.GetFunctionPointerForDelegate(display_dialog),
-                log_error = Marshal.GetFunctionPointerForDelegate(log_error),
-                guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(guid_to_asset_path),
+                display_dialog = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.display_dialog),
+                log_error = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.log_error),
+                guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.guid_to_asset_path),
+                free_cs_memory = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.free_cs_memory),
+                web_request_new_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_new_get),
+                web_request_add_header = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_add_header),
+                web_request_send = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_send),
+                web_response_status = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_response_status),
+                web_response_headers = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_response_headers),
+                web_response_async_reader = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_response_async_reader),
+                web_response_bytes_async = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_response_bytes_async),
+                web_headers_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_headers_get),
+                web_async_reader_read = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_async_reader_read),
             };
+
+            // TODO: version from rust
+            _client = new HttpClient();
+            _client.DefaultRequestHeaders.Add("User-Agent", 
+                "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
+                "vrc-get/0.1.10 (github:anatawa12/vrc-get, VPAI is based on vrc-get but reimplemented in C#)");
 
             try
             {
@@ -261,46 +284,213 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
         }
 
-        private static void VersionMismatch()
+        public static IntPtr NewHandle<T>(T handle, GCHandleType type = GCHandleType.Normal) where T : class
         {
-            EditorUtility.DisplayDialog("ERROR", "VPAI Internal Error! Installer is broken or THIS IS A BUG!", "OK");
+            return GCHandle.ToIntPtr(GCHandle.Alloc(handle, type));
         }
 
-        private static bool DisplayDialog(in RustStr title, in RustStr message, in RustStr ok, in RustStr cancel)
+        public static T HandleRef<T>(IntPtr handle) where T : class
         {
-            return EditorUtility.DisplayDialog(title.AsString(), message.AsString(), ok.AsString(), cancel.AsString());
+            return (T)GCHandle.FromIntPtr(handle).Target;
         }
 
-        private static void LogError(in RustStr message)
+        // own the handle and free
+        public static T OwnHandle<T>(IntPtr handle) where T : class
         {
-            Debug.LogError(message.AsString());
+            var gcHandle = GCHandle.FromIntPtr(handle);
+            var message = (T)gcHandle.Target;
+            gcHandle.Free();
+            return message;
         }
 
-        private static void GuidToAssetPath(in RustGUID guid, out RustStr path)
+        private static void FreeCsMemory(IntPtr handle)
         {
-            var chars = new char[128/4];
-            for (int i = 0; i < 128 / 8; i++)
+            OwnHandle<object>(handle);
+        }
+
+        static unsafe class UnsafeCallbacks
+        {
+            private static void VersionMismatch()
             {
-                var b = guid.bytes[i];
-                chars[i * 2 + 0] = "0123456789abcdef"[b >> 4];
-                chars[i * 2 + 0] = "0123456789abcdef"[b & 0xF];
+                EditorUtility.DisplayDialog("ERROR", "VPAI Internal Error! Installer is broken or THIS IS A BUG!",
+                    "OK");
             }
 
-            path = new RustStr(AssetDatabase.GUIDToAssetPath(new string(chars)));
+            private static bool DisplayDialog(in RsSlice title, in RsSlice message, in RsSlice ok, in RsSlice cancel)
+            {
+                return EditorUtility.DisplayDialog(title.AsString(), message.AsString(), ok.AsString(),
+                    cancel.AsString());
+            }
+
+            private static void LogError(in RsSlice message)
+            {
+                Debug.LogError(message.AsString());
+            }
+
+            private static void GuidToAssetPath(in RustGUID guid, out CsSlice path)
+            {
+                var chars = new char[128 / 4];
+                for (int i = 0; i < 128 / 8; i++)
+                {
+                    var b = guid.bytes[i];
+                    chars[i * 2 + 0] = "0123456789abcdef"[b >> 4];
+                    chars[i * 2 + 0] = "0123456789abcdef"[b & 0xF];
+                }
+
+                path = CsSlice.Of(AssetDatabase.GUIDToAssetPath(new string(chars)));
+            }
+
+            private static IntPtr WebRequestNewGet(in RsSlice url) =>
+                NewHandle(new HttpRequestMessage(HttpMethod.Get, url.AsString()));
+
+            private static void WebRequestAddHeader(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err)
+            {
+                try
+                {
+                    err = default;
+                    HandleRef<HttpRequestMessage>(handle).Headers.Add(name.AsString(), value.AsString());
+                }
+                catch (Exception e)
+                {
+                    err = CsSlice.Of(e.Message);
+                }
+            }
+
+            private static void WebRequestSend(IntPtr handle, IntPtr* result, CsSlice* err, IntPtr context,
+                IntPtr callback)
+                => AsyncCallbacks.WebRequestSend(handle, (IntPtr)result, (IntPtr)err, context, callback);
+
+            private static uint WebResponseStatus(IntPtr handle) =>
+                (uint)HandleRef<HttpResponseMessage>(handle).StatusCode;
+
+            private static IntPtr WebResponseHeaders(IntPtr handle) =>
+                NewHandle<HttpResponseHeaders>(HandleRef<HttpResponseMessage>(handle).Headers);
+
+            private static IntPtr WebResponseAsyncReader(IntPtr handle) =>
+                // important: handle is not ref: rust throw away the ownership
+                NewHandle<AsyncReader>(new AsyncReader(() =>
+                    OwnHandle<HttpResponseMessage>(handle).Content.ReadAsStreamAsync()));
+
+            private static void WebResponseBytesAsync(IntPtr handle, CsSlice* slice, CsSlice* err, IntPtr context,
+                IntPtr callback) =>
+                AsyncCallbacks.WebResponseBytesAsync(handle, (IntPtr)slice, (IntPtr)err, context, callback);
+
+            private static void WebHeadersGet(IntPtr handle, in RsSlice name, out CsSlice header)
+            {
+                var first = HandleRef<HttpResponseHeaders>(handle).GetValues(name.AsString()).FirstOrDefault();
+                header = first == null ? default : CsSlice.Of(first);
+            }
+
+            private static void WebAsyncReaderRead(IntPtr handle, CsSlice* slice, CsSlice* err, IntPtr context,
+                IntPtr callback) =>
+                AsyncCallbacks.WebAsyncReaderRead(handle, (IntPtr)slice, (IntPtr)err, context, callback);
+
+            // ReSharper disable InconsistentNaming
+            public static readonly NativeCsData.version_mismatch_t version_mismatch = VersionMismatch;
+            public static readonly NativeCsData.display_dialog_t display_dialog = DisplayDialog;
+            public static readonly NativeCsData.log_error_t log_error = LogError;
+            public static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
+            public static readonly NativeCsData.free_cs_memory_t free_cs_memory = FreeCsMemory;
+            public static readonly NativeCsData.web_request_new_get_t web_request_new_get = WebRequestNewGet;
+            public static readonly NativeCsData.web_request_add_header_t web_request_add_header = WebRequestAddHeader;
+            // important: not ref: rust throw away the ownership
+            public static readonly NativeCsData.web_request_send_t web_request_send = WebRequestSend;
+            public static readonly NativeCsData.web_response_status_t web_response_status = WebResponseStatus;
+            public static readonly NativeCsData.web_response_headers_t web_response_headers = WebResponseHeaders;
+            // important: handle is not ref: rust throw away the ownership
+            public static readonly NativeCsData.web_response_async_reader_t web_response_async_reader = WebResponseAsyncReader;
+            // important: handle is not ref: rust throw away the ownership
+            public static readonly NativeCsData.web_response_bytes_async_t web_response_bytes_async = WebResponseBytesAsync;
+            public static readonly NativeCsData.web_headers_get_t web_headers_get = WebHeadersGet;
+            public static readonly NativeCsData.web_async_reader_read_t web_async_reader_read = WebAsyncReaderRead;
+            // ReSharper restore InconsistentNaming
         }
 
+        static class AsyncCallbacks
+        {
+            // wrapper for async method
+            private static void Async(IntPtr err, IntPtr context, IntPtr callback, Func<Task> f)
+            {
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await f();
+                    }
+                    catch (Exception e)
+                    {
+                        unsafe { *(CsSlice *)err = CsSlice.Of(e.Message); }
+                    }
+                });
+                var awaiter = task.ConfigureAwait(false).GetAwaiter();
+                if (awaiter.IsCompleted)
+                    Marshal.GetDelegateForFunctionPointer<NativeCsData.async_callback_t>(callback)(context);
+                else
+                    awaiter.OnCompleted(() =>
+                        Marshal.GetDelegateForFunctionPointer<NativeCsData.async_callback_t>(callback)(context));
+            }
 
+            public static void WebRequestSend(IntPtr handle, IntPtr result, IntPtr err, IntPtr context,
+                IntPtr callback)
+            {
+                // important: not ref: rust throw away the ownership
+                Async(err, context, callback, async () =>
+                {
+                    var wait = await _client.SendAsync(OwnHandle<HttpRequestMessage>(handle));
+                    unsafe
+                    {
+                        *(IntPtr*)result = NewHandle<HttpResponseMessage>(wait);
+                    }
+                });
+            }
+
+            public static void WebResponseBytesAsync(IntPtr handle, IntPtr slice, IntPtr err, IntPtr context, IntPtr callback)
+            {
+                Async(err, context, callback, async () =>
+                {
+                    var stream = await HandleRef<HttpResponseMessage>(handle).Content.ReadAsByteArrayAsync();
+
+                    unsafe
+                    {
+                        *(CsSlice*)slice = CsSlice.Of(stream);
+                    }
+                });
+            }
+
+            public static void WebAsyncReaderRead(IntPtr handle, IntPtr slice, IntPtr err, IntPtr context, IntPtr callback)
+            {
+                Async(err, context, callback, async () =>
+                {
+                    var stream = await HandleRef<AsyncReader>(handle).Task;
+
+                    var bytes = new byte[1024 * 4];
+                    var size = await stream.ReadAsync(bytes, 0, bytes.Length);
+
+                    unsafe
+                    {
+                        *(CsSlice*)slice = CsSlice.Of(bytes, 0, size);
+                    }
+                });
+            }
+        }
+
+        class AsyncReader
+        {
+            public readonly Task<Stream> Task;
+
+            public AsyncReader(Func<Task<Stream>> func)
+            {
+                Task = System.Threading.Tasks.Task.Run(func);
+            }
+        }
 
         // ReSharper disable InconsistentNaming
-        private static readonly NativeCsData.version_mismatch_t version_mismatch = VersionMismatch;
-        private static readonly NativeCsData.display_dialog_t display_dialog = DisplayDialog;
-        private static readonly NativeCsData.log_error_t log_error = LogError;
-        private static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
 
         delegate bool vpai_native_entry_point_t(in NativeCsData data);
 
-        struct NativeCsData
+        unsafe struct NativeCsData
         {
+            // ReSharper disable MemberHidesStaticFromOuterClass
             public ulong version;
             public IntPtr version_mismatch;
             // end of version independent part
@@ -312,45 +502,110 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public IntPtr display_dialog;
             public IntPtr log_error;
             public IntPtr guid_to_asset_path;
+            public IntPtr free_cs_memory;
+            public IntPtr web_request_new_get;
+            public IntPtr web_request_add_header;
+            public IntPtr web_request_send;
+            public IntPtr web_response_status;
+            public IntPtr web_response_headers;
+            public IntPtr web_response_async_reader;
+            public IntPtr web_response_bytes_async;
+            public IntPtr web_headers_get;
+            public IntPtr web_async_reader_read;
+            // ReSharper restore MemberHidesStaticFromOuterClass
 
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void version_mismatch_t();
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate bool display_dialog_t(in RustStr title, in RustStr message, in RustStr ok, in RustStr cancel);
+            public delegate bool display_dialog_t(in RsSlice title, in RsSlice message, in RsSlice ok, in RsSlice cancel);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void log_error_t(in RustStr messagePtr);
+            public delegate void log_error_t(in RsSlice messagePtr);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void guid_to_asset_path_t(in RustGUID guid, out RustStr path);
+            public delegate void guid_to_asset_path_t(in RustGUID guid, out CsSlice path);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void free_cs_memory_t(IntPtr handle);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr web_request_new_get_t(in RsSlice url);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void web_request_add_header_t(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err);
+            // important: not ref: rust throw away the ownership
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void web_request_send_t(IntPtr handle, IntPtr *result, CsSlice *err, IntPtr context, IntPtr callback);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate uint web_response_status_t(IntPtr handle);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr web_response_headers_t(IntPtr handle);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            // important: handle is not ref: rust throw away the ownership
+            public delegate IntPtr web_response_async_reader_t(IntPtr handle);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void web_response_bytes_async_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsSlice *err, IntPtr context, IntPtr callback);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void web_headers_get_t(IntPtr handle, in RsSlice name, out CsSlice header);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void web_async_reader_read_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsSlice *err, IntPtr context, IntPtr callback);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void async_callback_t(IntPtr callback);
         }
 
-        struct RustGUID {
+        unsafe struct RustGUID {
             public fixed byte bytes[128/8];
         }
 
-        readonly struct RustStr
+        // because generic struct is not unmanaged
+        readonly unsafe struct CsSlice
         {
-            private readonly byte *ptr;
+            private readonly IntPtr handle;
+            private readonly IntPtr ptr; //T *ptr;
             private readonly IntPtr len;
 
-            public RustStr(string body)
+            private CsSlice(IntPtr handle, IntPtr ptr, IntPtr len)
             {
-                var bytes = UTF8.GetBytes(body);
-                var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-                FixedKeep.Add(handle);
-                ptr = (byte*)handle.AddrOfPinnedObject();
-                len = (IntPtr)bytes.Length;
+                this.handle = handle;
+                this.ptr = ptr;
+                this.len = len;
             }
 
-            public string AsString()
+            public static CsSlice Of<T>(T[] array) where T : unmanaged => Of(array, 0, array.Length);
+
+            public static CsSlice Of<T>(T[] array, int offset, int len) where T : unmanaged
+            {
+                var handle = NewHandle(array);
+                return new CsSlice(
+                    handle,
+                    GCHandle.FromIntPtr(handle).AddrOfPinnedObject() + offset * sizeof(T),
+                    (IntPtr) len);
+            }
+            
+            public static CsSlice Of(string str) => Of(UTF8.GetBytes(str));
+        }
+
+        readonly struct RsSlice
+        {
+#pragma warning disable CS0649
+            private readonly IntPtr ptr;//T *ptr;
+            private readonly IntPtr len;
+#pragma warning restore CS0649
+            
+            public unsafe string AsString()
             {
                 if ((ulong) len >= int.MaxValue)
                     throw new InvalidOperationException("str too big to be string");
-                return UTF8.GetString(ptr, (int)len);
+                return UTF8.GetString((byte *)ptr, (int)len);
             }
-
-            private static readonly Encoding UTF8 = new UTF8Encoding(false);
         }
+
+        private static readonly Encoding UTF8 = new UTF8Encoding(false);
         // ReSharper restore InconsistentNaming
+
+        // only for generic check
+        [Conditional("NEVER_DEFINED")]
+        private static void EnsureUnmanaged<T>() where T : unmanaged
+        {
+            EnsureUnmanaged<CsSlice>();
+            EnsureUnmanaged<RsSlice>();
+        }
     }
 }

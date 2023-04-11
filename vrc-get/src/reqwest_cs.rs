@@ -162,7 +162,7 @@ impl Client {
         match url.into_url() {
             Ok(url) => {
                 Request {
-                    ptr: Ok((native_data().web_request_new)(&RsStr::new(url.as_str())))
+                    ptr: Ok((native_data().web_request_new_get)(&RsStr::new(url.as_str())))
                 }
             }
             Err(err) => {
@@ -202,9 +202,30 @@ impl Request {
         self
     }
 
-    pub async fn send(self) -> Result<Response> {
-        let ptr = self.ptr?;
-        err_handling(|err| Response { ptr: (native_data().web_request_send)(ptr.as_ref(), err) })
+    pub fn send(self) -> impl Future<Output=Result<Response>> {
+        async_wrapper! {
+            struct Future -> Result<Response> {
+                ptr: Result<CsHandle> = self.ptr,
+                result: CsHandle = CsHandle::invalid(),
+                err: CsStr = CsStr::invalid(),
+            },
+            |this, wake| {
+                let this_ptr = this as *const _ as *const ();
+                match std::mem::replace(&mut this.ptr, Ok(CsHandle::invalid())) {
+                    Ok(ptr) => {
+                        (native_data().web_request_send)(ptr, &mut this.result, &mut this.err, this_ptr, wake)
+                    }
+                    Err(err) => return Ready(Err(err))
+                };
+            },
+            |this| {
+                if this.err.as_str() != "" {
+                    Err(Error::cs(this.err.to_string()))
+                } else {
+                    Ok(Response { ptr: this.result.take() })
+                }
+            }
+        }
     }
 }
 
@@ -226,8 +247,8 @@ impl Response {
         }
     }
 
-    pub fn headers(&self) -> Headers {
-        Headers {
+    pub fn headers(&self) -> HeaderMap {
+        HeaderMap {
             ptr: (native_data().web_response_headers)(self.ptr.as_ref()),
         }
     }
@@ -238,17 +259,17 @@ impl Response {
         }
     }
 
-    pub fn bytes(&self) -> impl Future<Output=Result<CsSlice<u8>>> + '_ {
+    pub fn bytes(self) -> impl Future<Output=Result<CsSlice<u8>>> {
         async_wrapper! {
-            struct Future<'a> -> Result<CsSlice<u8>> {
-                ptr: CsHandleRef<'a> = self.ptr.as_ref(),
+            struct Future -> Result<CsSlice<u8>> {
+                ptr: CsHandle = self.ptr,
                 slice: CsSlice<u8> = CsSlice::invalid(),
                 err: CsStr = CsStr::invalid(),
             },
             |this, wake| {
                 let this_ptr = this as *const _ as *mut ();
                 (native_data().web_response_bytes_async)(
-                    this.ptr,
+                    this.ptr.take(),
                     &mut this.slice,
                     &mut this.err,
                     this_ptr,
@@ -271,11 +292,11 @@ impl Response {
     }
 }
 
-pub struct Headers {
+pub struct HeaderMap {
     pub ptr: CsHandle,
 }
 
-impl Headers {
+impl HeaderMap {
     pub fn get(&self, name: &str) -> Option<HeaderValue> {
         let mut result = CsStr::invalid();
         (native_data().web_headers_get)(self.ptr.as_ref(), &RsStr::new(name), &mut result);
@@ -435,13 +456,3 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-fn err_handling<F, R>(f: F) -> Result<R> where F : FnOnce(&mut CsStr) -> R {
-    let mut err = CsStr::invalid();
-    let r = f(&mut err);
-    if err.is_invalid() {
-        Err(Error::cs(err.to_string()))
-    } else {
-        Ok(r)
-    }
-}

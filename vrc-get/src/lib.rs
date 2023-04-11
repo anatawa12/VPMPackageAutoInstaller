@@ -44,6 +44,10 @@ mod interlop {
         pub fn as_ref(&self) -> CsHandleRef {
             CsHandleRef(self.0, PhantomData)
         }
+
+        pub fn take(&mut self) -> CsHandle {
+            std::mem::replace(self, Self::invalid())
+        }
     }
 
     impl Drop for CsHandle {
@@ -60,16 +64,18 @@ mod interlop {
     #[repr(C)]
     pub struct CsSlice<T> {
         handle: CsHandle,
-        ptr: *const T,
+        ptr: usize,
         len: usize,
+        _phantom: PhantomData<*const T>,
     }
 
     impl <T> CsSlice<T> {
         pub fn invalid() -> Self {
             Self {
                 handle: CsHandle::invalid(),
-                ptr: std::ptr::NonNull::<T>::dangling().as_ptr(),
+                ptr: 0,
                 len: 0,
+                _phantom: PhantomData
             }
         }
 
@@ -82,8 +88,12 @@ mod interlop {
         }
 
         pub fn as_slice(&self) -> &[T] {
+            // allow nullptr for empty ones
+            if self.len == 0 {
+                return &[];
+            }
             unsafe {
-                std::slice::from_raw_parts(self.ptr, self.len)
+                std::slice::from_raw_parts(self.ptr as *const T, self.len)
             }
         }
     }
@@ -184,14 +194,16 @@ mod interlop {
         // memory util (for rust memory)
         pub(crate) free_cs_memory: extern "system" fn (handle: usize),
         // http client
-        pub(crate) web_request_new: extern "system" fn (url: &RsStr) -> CsHandle,
+        pub(crate) web_request_new_get: extern "system" fn (url: &RsStr) -> CsHandle,
         pub(crate) web_request_add_header: extern "system" fn (this: CsHandleRef, name: &RsStr, value: &RsStr, err: &mut CsStr),
-        pub(crate) web_request_send: extern "system" fn (this: CsHandleRef, err: &mut CsStr) -> CsHandle,
+        // important: not ref: rust throw away the ownership
+        pub(crate) web_request_send: extern "system" fn (this: CsHandle, result: &mut CsHandle, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
         pub(crate) web_response_status: extern "system" fn (this: CsHandleRef) -> u32,
         pub(crate) web_response_headers: extern "system" fn (this: CsHandleRef) -> CsHandle,
         // important: not ref: rust throw away the ownership
         pub(crate) web_response_async_reader: extern "system" fn (this: CsHandle) -> CsHandle,
-        pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        // important: not ref: rust throw away the ownership
+        pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandle, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
         pub(crate) web_headers_get: extern "system" fn (this: CsHandleRef, name: &RsStr, slice: &mut CsStr),
         pub(crate) web_async_reader_read: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
     }
