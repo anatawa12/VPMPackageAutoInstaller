@@ -8,24 +8,24 @@ use std::task::Poll::{Pending, Ready};
 use futures::Stream;
 use serde::de::DeserializeOwned;
 pub use url::Url;
-use crate::interlop::{CsSlice, CsStr, native_data, RsStr};
+use crate::interlop::{CsHandle, CsHandleRef, CsSlice, CsStr, native_data, RsStr};
 
 macro_rules! async_wrapper {
     (
-        struct $struct_name: ident -> $return: ty {
+        struct $struct_name: ident $(< $($lifetime: lifetime),+ >)? -> $return: ty {
             $($field: ident: $field_ty: ty $(= $field_value: expr)?),* $(,)?
         },
         |$this: ident, $wake: ident| $call_native: expr,
         |$this1: ident| $result: expr $(,)?
     ) => {
-        struct $struct_name {
+        struct $struct_name $(< $($lifetime),+ >)? {
             $($field: $field_ty,)*
             state: AtomicU32,
             waker: Option<Waker>,
             _pinned: PhantomPinned,
         }
 
-        impl ::std::future::Future for $struct_name {
+        impl $(< $($lifetime),+ >)? ::std::future::Future for $struct_name $(< $($lifetime),+ >)? {
             type Output = $return;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -52,7 +52,7 @@ macro_rules! async_wrapper {
                 }
             }
         }
-        impl $struct_name {
+        impl $(< $($lifetime),+ >)? $struct_name $(< $($lifetime),+ >)? {
             const INITIAL: u32 = 0;
             const POLLING: u32 = 1;
             const FINISHED: u32 = 2;
@@ -66,30 +66,87 @@ macro_rules! async_wrapper {
         }
 
         async_wrapper! {
-            @call_optional $struct_name $($field: $field_ty $(= $field_value)?,)* 
+            @call_optional $struct_name $(< $($lifetime),+ >)? $($field: $field_ty $(= $field_value)?,)* 
         }
     };
 
-    (@call_optional $struct_name: ident $($field: ident: $field_ty: ty,)*) => {
-        // create constructor instead
-        impl $struct_name {
-            pub fn new($($field: $field_ty,)*) -> Self {
-                Self {
-                    $($field,)*
-                    state: AtomicU32::new($struct_name::INITIAL),
-                    waker: None,
-                    _pinned: PhantomPinned,
-                }
-            }
-        }
-    };
-    
-    (@call_optional $struct_name: ident $($field: ident: $field_ty: ty = $field_value: expr,)*) => {
+    (@call_optional $struct_name: ident $(< $($lifetime: lifetime),+ >)? $($field: ident: $field_ty: ty = $field_value: expr,)*) => {
         $struct_name {
             $($field: $field_value,)*
             state: AtomicU32::new($struct_name::INITIAL),
             waker: None,
             _pinned: PhantomPinned,
+        }
+    };
+
+    (@call_optional $struct_name: ident $($($lifetime: lifetime),+)? $($field: tt)*) => {
+        // create constructor instead
+        async_wrapper! {@build_new 
+            [$struct_name]
+            [$(< $($lifetime),+ >)?]
+            []
+            []
+            [$($field)*] 
+        }
+    };
+
+    (@build_new
+        [$struct_name: ident] 
+        [$($lifetime: tt)*]
+        [$($field_init: tt)*]
+        [$($field_param: tt)*]
+        [$field_cur: ident: $field_ty_cur: ty, $($rest: tt)*]
+    ) => {
+        async_wrapper! { @build_new
+            [$struct_name]
+            [$($lifetime)*]
+            [$($field_init)*]
+            [$($field_param)* $field_cur: $field_ty_cur,]
+            [$($rest)*]
+        }
+    };
+
+    (@build_new
+        [$struct_name: ident] 
+        [$($lifetime: tt)*]
+        [$($field_init: tt)*]
+        [$($field_param: tt)*]
+        [$field_cur: ident: $field_ty_cur: ty = $field_value_cur: expr, $($rest: tt)*]
+    ) => {
+        async_wrapper! { @build_new
+            [$struct_name]
+            [$($lifetime)*]
+            [$($field_init)*  $field_cur: $field_ty_cur = $field_value_cur,]
+            [$($field_param)*]
+            [$($rest)*]
+        }
+    };
+
+    (@build_new
+        [$struct_name: ident] 
+        [$($($lifetime: lifetime),+)?]
+        [$($field_init: ident: $field_ty_init: ty = $field_value_init: expr,)*]
+        [$($field_param: ident: $field_ty_param: ty,)*]
+        []
+    ) => {
+        // create constructor instead
+        impl $(< $($lifetime),+ >)? $struct_name $(< $($lifetime),+ >)? {
+            pub fn new($($field_param: $field_ty_param,)*) -> Self {
+                Self {
+                    $($field_param,)*
+                    $($field_init: $field_value_init,)*
+                    state: AtomicU32::new(Self::INITIAL),
+                    waker: None,
+                    _pinned: PhantomPinned,
+                }
+            }
+            
+            pub unsafe fn reset(self: Pin<&mut Self>) {
+                let this = self.get_unchecked_mut();
+                $(this.$field_init = $field_value_init;)*
+                this.state = AtomicU32::new(Self::INITIAL);
+                this.waker = None;
+            }
         }
     };
 }
@@ -130,12 +187,12 @@ impl Client {
 }
 
 pub struct Request {
-    ptr: Result<usize>,
+    ptr: Result<CsHandle>,
 }
 
 impl Request {
     pub fn header(mut self, name: &str, value: &str) -> Self {
-        if let Ok(ptr) = self.ptr {
+        if let Ok(ptr) = self.ptr.as_ref().map(|x| x.as_ref()) {
             let mut err = CsStr::invalid();
             (native_data().web_request_add_header)(ptr, &RsStr::new(name), &RsStr::new(value), &mut err);
             if err.is_invalid() {
@@ -147,20 +204,20 @@ impl Request {
 
     pub async fn send(self) -> Result<Response> {
         let ptr = self.ptr?;
-        err_handling(|err| Response { ptr: (native_data().web_request_send)(ptr, err) })
+        err_handling(|err| Response { ptr: (native_data().web_request_send)(ptr.as_ref(), err) })
     }
 }
 
 pub struct Response {
-    ptr: usize,
+    ptr: CsHandle,
 }
 
 impl Response {
     pub fn status(&self) -> u32 {
-        (native_data().web_response_status)(self.ptr)
+        (native_data().web_response_status)(self.ptr.as_ref())
     }
 
-    pub fn error_for_status(&self) -> Result<&Self> {
+    pub fn error_for_status(self) -> Result<Self> {
         let status = self.status();
         if matches!(status, 400..=599) {
             Ok(self)
@@ -171,21 +228,20 @@ impl Response {
 
     pub fn headers(&self) -> Headers {
         Headers {
-            ptr: (native_data().web_response_headers)(self.ptr),
+            ptr: (native_data().web_response_headers)(self.ptr.as_ref()),
         }
     }
 
-    pub fn bytes_stream(&self) -> AsStream {
+    pub fn bytes_stream(self) -> impl Stream<Item = Result<CsSlice<u8>>>  {
         AsStream {
-            ptr: (native_data().web_response_async_reader)(self.ptr),
-            inner: None,
+            inner: Box::pin(StreamInner::new((native_data().web_response_async_reader)(self.ptr))),
         }
     }
 
-    pub fn bytes(&self) -> impl Future<Output=Result<CsSlice<u8>>> {
+    pub fn bytes(&self) -> impl Future<Output=Result<CsSlice<u8>>> + '_ {
         async_wrapper! {
-            struct Future -> Result<CsSlice<u8>> {
-                ptr: usize = self.ptr,
+            struct Future<'a> -> Result<CsSlice<u8>> {
+                ptr: CsHandleRef<'a> = self.ptr.as_ref(),
                 slice: CsSlice<u8> = CsSlice::invalid(),
                 err: CsStr = CsStr::invalid(),
             },
@@ -216,13 +272,13 @@ impl Response {
 }
 
 pub struct Headers {
-    pub ptr: usize,
+    pub ptr: CsHandle,
 }
 
 impl Headers {
     pub fn get(&self, name: &str) -> Option<HeaderValue> {
         let mut result = CsStr::invalid();
-        (native_data().web_headers_get)(self.ptr, &RsStr::new(name), &mut result);
+        (native_data().web_headers_get)(self.ptr.as_ref(), &RsStr::new(name), &mut result);
         if result.is_invalid() {
             None
         } else {
@@ -240,16 +296,17 @@ impl HeaderValue {
         Ok(self.str.to_string())
     }
 }
+
 async_wrapper! {
     struct StreamInner -> Result<CsSlice<u8>> {
-        ptr: usize,
-        slice: CsSlice<u8>,
-        err: CsStr,
+        ptr: CsHandle,
+        slice: CsSlice<u8> = CsSlice::invalid(),
+        err: CsStr = CsStr::invalid(),
     },
     |this, wake| {
         let this_ptr = this as *const _ as *mut ();
         (native_data().web_async_reader_read)(
-            this.ptr,
+            this.ptr.as_ref(),
             &mut this.slice,
             &mut this.err,
             this_ptr,
@@ -266,19 +323,21 @@ async_wrapper! {
 }
 
 pub struct AsStream {
-    ptr: usize,
-    inner: Option<Pin<Box<StreamInner>>>,
+    inner: Pin<Box<StreamInner>>,
 }
 
-impl <'a> Stream for AsStream {
+impl Stream for AsStream {
     type Item = Result<CsSlice<u8>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let ptr = self.ptr;
-        let defined = self.get_mut().inner.get_or_insert_with(
-            || Box::pin(StreamInner::new(ptr, CsSlice::invalid(), CsStr::invalid())));
+        let this = self.get_mut();
+        let ready = ready!(this.inner.as_mut().poll(cx));
 
-        return match ready!(defined.as_mut().poll(cx)) {
+        unsafe {
+            this.inner.as_mut().reset();
+        }
+
+        return match ready {
             Ok(r) => {
                 if r.len() == 0 {
                     // means end of stream

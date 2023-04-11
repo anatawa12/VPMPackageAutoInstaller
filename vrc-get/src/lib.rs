@@ -24,13 +24,42 @@ mod interlop {
     use std::panic::catch_unwind;
     use crate::{CURRENT_VERSION, vpai_native_impl};
     use std::cell::UnsafeCell;
+    use std::marker::PhantomData;
     use std::ops::Deref;
     use std::ptr::null;
+
+    // C# owned value
+    #[repr(transparent)]
+    pub struct CsHandle(usize);
+
+    impl CsHandle {
+        pub fn invalid() -> Self {
+            Self(0)
+        }
+
+        pub fn is_invalid(&self) -> bool {
+            self.0 == 0
+        }
+
+        pub fn as_ref(&self) -> CsHandleRef {
+            CsHandleRef(self.0, PhantomData)
+        }
+    }
+
+    impl Drop for CsHandle {
+        fn drop(&mut self) {
+            (native_data().free_cs_memory)(self.0)
+        }
+    }
+
+    #[repr(transparent)]
+    #[derive(Copy, Clone)]
+    pub struct CsHandleRef<'a>(usize, PhantomData<&'a ()>);
 
     // C# owned slice
     #[repr(C)]
     pub struct CsSlice<T> {
-        handle: usize,
+        handle: CsHandle,
         ptr: *const T,
         len: usize,
     }
@@ -38,14 +67,14 @@ mod interlop {
     impl <T> CsSlice<T> {
         pub fn invalid() -> Self {
             Self {
-                handle: 0,
+                handle: CsHandle::invalid(),
                 ptr: std::ptr::NonNull::<T>::dangling().as_ptr(),
                 len: 0,
             }
         }
 
         pub fn is_invalid(&self) -> bool {
-            self.handle == 0
+            self.handle.is_invalid()
         }
 
         pub fn take(&mut self) -> CsSlice<T> {
@@ -70,12 +99,6 @@ mod interlop {
     impl <T> AsRef<[T]> for CsSlice<T> {
         fn as_ref(&self) -> &[T] {
             self.as_slice()
-        }
-    }
-
-    impl <T> Drop for CsSlice<T> {
-        fn drop(&mut self) {
-            (native_data().free_cs_memory)(self.handle)
         }
     }
 
@@ -161,15 +184,16 @@ mod interlop {
         // memory util (for rust memory)
         pub(crate) free_cs_memory: extern "system" fn (handle: usize),
         // http client
-        pub(crate) web_request_new: extern "system" fn (url: &RsStr) -> usize,
-        pub(crate) web_request_add_header: extern "system" fn (this: usize, name: &RsStr, value: &RsStr, err: &mut CsStr),
-        pub(crate) web_request_send: extern "system" fn (this: usize, err: &mut CsStr) -> usize,
-        pub(crate) web_response_status: extern "system" fn (this: usize) -> u32,
-        pub(crate) web_response_headers: extern "system" fn (this: usize) -> usize,
-        pub(crate) web_response_async_reader: extern "system" fn (this: usize) -> usize,
-        pub(crate) web_response_bytes_async: extern "system" fn (this: usize, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
-        pub(crate) web_headers_get: extern "system" fn (this: usize, name: &RsStr, slice: &mut CsStr),
-        pub(crate) web_async_reader_read: extern "system" fn (this: usize, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_request_new: extern "system" fn (url: &RsStr) -> CsHandle,
+        pub(crate) web_request_add_header: extern "system" fn (this: CsHandleRef, name: &RsStr, value: &RsStr, err: &mut CsStr),
+        pub(crate) web_request_send: extern "system" fn (this: CsHandleRef, err: &mut CsStr) -> CsHandle,
+        pub(crate) web_response_status: extern "system" fn (this: CsHandleRef) -> u32,
+        pub(crate) web_response_headers: extern "system" fn (this: CsHandleRef) -> CsHandle,
+        // important: not ref: rust throw away the ownership
+        pub(crate) web_response_async_reader: extern "system" fn (this: CsHandle) -> CsHandle,
+        pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_headers_get: extern "system" fn (this: CsHandleRef, name: &RsStr, slice: &mut CsStr),
+        pub(crate) web_async_reader_read: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
     }
 
     impl NativeCsData {
