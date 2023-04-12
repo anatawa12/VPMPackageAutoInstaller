@@ -5,7 +5,6 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer};
 use serde::de::{Error, MapAccess, Visitor};
 use serde::de::value::{MapAccessDeserializer, StrDeserializer};
-use url::Url;
 use crate::interlop::{display_dialog, log_error};
 use crate::interlop::NativeCsData;
 use crate::version::VersionRange;
@@ -17,6 +16,7 @@ mod vpm;
 mod version;
 mod reqwest_cs;
 use reqwest_cs as reqwest;
+use reqwest::Url;
 
 const CURRENT_VERSION: u64 = 1;
 
@@ -193,6 +193,7 @@ mod interlop {
         ),
         // memory util (for rust memory)
         pub(crate) free_cs_memory: extern "system" fn (handle: usize),
+        pub(crate) verify_url: extern "system" fn (version: &RsStr) -> bool,
         // http client
         pub(crate) web_client_new: extern "system" fn (version: &RsStr) -> CsHandle,
         pub(crate) web_request_new_get: extern "system" fn (this: CsHandleRef, url: &RsStr) -> CsHandle,

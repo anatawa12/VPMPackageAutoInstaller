@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display, Formatter, Write};
 use std::future::Future;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
@@ -8,7 +8,7 @@ use std::task::{Context, Poll, ready, Waker};
 use std::task::Poll::{Pending, Ready};
 use futures::Stream;
 use serde::de::DeserializeOwned;
-pub use url::Url;
+use serde::{Deserialize, Deserializer};
 use crate::interlop::{CsHandle, CsSlice, CsStr, native_data, RsStr};
 
 macro_rules! async_wrapper {
@@ -382,17 +382,13 @@ pub trait IntoUrl {
 
 impl IntoUrl for Url {
     fn into_url(self) -> Result<Url> {
-        if self.has_host() {
-            Ok(self)
-        } else {
-            Err(Error::url_bad_scheme(self))
-        }
+        Ok(self)
     }
 }
 
 impl IntoUrl for &str {
     fn into_url(self) -> Result<Url> {
-        self.parse::<Url>().map_err(Error::parse_err)?.into_url()
+        self.parse::<Url>()?.into_url()
     }
 }
 
@@ -413,7 +409,7 @@ enum Inner {
     ErrorStatusCode(u32),
     CSharpError(String),
     JsonError(serde_json::Error),
-    ParseUrlError(url::ParseError),
+    ParseUrlError,
 }
 
 impl Error {
@@ -432,8 +428,8 @@ impl Error {
     fn json(err: serde_json::Error) -> Error {
         Self::new(Inner::JsonError(err))
     }
-    fn parse_err(err: url::ParseError) -> Error {
-        Self::new(Inner::ParseUrlError(err))
+    fn parse_err() -> Error {
+        Self::new(Inner::ParseUrlError)
     }
 }
 
@@ -450,9 +446,69 @@ impl Display for Error {
             }
             Inner::CSharpError(msg) => f.write_str(msg),
             Inner::JsonError(e) => Display::fmt(e, f),
-            Inner::ParseUrlError(e) => Display::fmt(e, f),
+            Inner::ParseUrlError => f.write_str("http/https url expected"),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+#[derive(Debug, Clone)]
+pub struct Url {
+    url: String,
+}
+
+impl Url {
+    pub fn as_str(&self) -> &str {
+        self.url.as_str()
+    }
+}
+
+impl std::str::FromStr for Url {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if (native_data().verify_url)(&RsStr::new(s)) {
+            Ok(Url { url: s.to_owned() })
+        } else {
+            Err(Error::parse_err())
+        }
+    }
+}
+
+impl AsRef<str> for Url {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Display for Url {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl <'de> Deserialize<'de> for Url {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error> where D: Deserializer<'de> {
+        use serde::de::{Error, Unexpected, Visitor};
+
+        struct UrlVisitor;
+
+        impl<'de> Visitor<'de> for UrlVisitor {
+            type Value = Url;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                formatter.write_str("a string representing an URL")
+            }
+
+            fn visit_str<E>(self, s: &str) -> std::result::Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                s.parse().map_err(|_| Error::invalid_value(Unexpected::Str(s), &"http/https url expected"))
+            }
+        }
+
+        deserializer.deserialize_str(UrlVisitor)
+    }
+}

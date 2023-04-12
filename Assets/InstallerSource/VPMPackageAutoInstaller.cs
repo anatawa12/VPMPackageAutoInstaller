@@ -29,13 +29,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
@@ -240,6 +238,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 log_error = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.log_error),
                 guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.guid_to_asset_path),
                 free_cs_memory = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.free_cs_memory),
+                verify_url = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.verify_url),
                 web_client_new = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_client_new),
                 web_request_new_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_new_get),
                 web_request_add_header = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_request_add_header),
@@ -334,6 +333,19 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 OwnHandle<object>(handle);
             }
 
+            private static bool VerifyUrl(in RsSlice url)
+            {
+                try
+                {
+                    var parsed = new Uri(url.AsString());
+                    return parsed.Scheme == "http" || parsed.Scheme == "https";
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
             private static IntPtr WebClientNew(in RsSlice version)
             {
                 var client = new HttpClient();
@@ -395,6 +407,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public static readonly NativeCsData.log_error_t log_error = LogError;
             public static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
             public static readonly NativeCsData.free_cs_memory_t free_cs_memory = FreeCsMemory;
+            public static readonly NativeCsData.verify_url_t verify_url = VerifyUrl;
             public static readonly NativeCsData.web_client_new_t web_client_new = WebClientNew;
             public static readonly NativeCsData.web_request_new_get_t web_request_new_get = WebRequestNewGet;
             public static readonly NativeCsData.web_request_add_header_t web_request_add_header = WebRequestAddHeader;
@@ -521,6 +534,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public IntPtr log_error;
             public IntPtr guid_to_asset_path;
             public IntPtr free_cs_memory;
+            public IntPtr verify_url;
             public IntPtr web_client_new;
             public IntPtr web_request_new_get;
             public IntPtr web_request_add_header;
@@ -542,6 +556,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public delegate void log_error_t(in RsSlice messagePtr);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void guid_to_asset_path_t(in RustGUID guid, out CsSlice path);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate bool verify_url_t(in RsSlice guid);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void free_cs_memory_t(IntPtr handle);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
