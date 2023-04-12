@@ -13,6 +13,8 @@ on:
 env:
   CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
   PKG_NAME: com.anatawa12.vpm-package-auto-installer.creator
+  ACTIONS_WORK_DIR: build
+  PAGES_WORK_DIR: build/pages
 
 concurrency:
   group: publish
@@ -52,7 +54,7 @@ jobs:
           git tag "v$VERSION"
 
       - name: Prepare build folder
-        run: mkdir build
+        run: mkdir "$ACTIONS_WORK_DIR"
 
       - name: Build Installer dll
         run: ./Assets/InstallerSource/DllBuild~/build-and-copy.sh
@@ -60,40 +62,40 @@ jobs:
       - name: Create Template unitypackage
         uses: anatawa12/sh-actions/create-unitypackage@master
         with:
-          output-path: build/installer-template.unitypackage
+          output-path: ${{ env.ACTIONS_WORK_DIR }}/installer-template.unitypackage
           package-path: Assets/com.anatawa12.vpm-package-auto-installer
 
       - uses: actions/upload-artifact@v3
         with:
           name: installer-template
-          path: build/installer-template.unitypackage
+          path: ${{ env.ACTIONS_WORK_DIR }}/installer-template.unitypackage
 
       - name: Build VPM release
         run: |
           # add to creator unity package
-          cp build/installer-template.unitypackage "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
+          cp "$ACTIONS_WORK_DIR/installer-template.unitypackage" "$CREATOR_PKG_ROOT/installer-template.unitypackage.bytes"
           cp "building/installer-template.unitypackage.bytes.meta" "$CREATOR_PKG_ROOT/"
           # create zip file
           pushd "$CREATOR_PKG_ROOT"
-            zip -r "../../build/$PKG_NAME-$VERSION.zip" .
+            zip -r "$GITHUB_WORKSPACE/$ACTIONS_WORK_DIR/$PKG_NAME-$VERSION.zip" .
           popd
 
       - uses: actions/upload-artifact@v3
         with:
           name: vpm-package
-          path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
+          path: ${{ env.ACTIONS_WORK_DIR }}/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
 
       - name: Create Installer unitypackage
         shell: bash
         run: |
           # create creator installer unity package
           export USE_LOCAL_PREBUILT=1
-          node creator/creator.mjs building/config.json build/installer-creator.unitypackage
+          node creator/creator.mjs building/config.json "$ACTIONS_WORK_DIR/installer-creator.unitypackage"
 
       - uses: actions/upload-artifact@v3
         with:
           name: installer-creator
-          path: build/installer-creator.unitypackage
+          path: ${{ env.ACTIONS_WORK_DIR }}/installer-creator.unitypackage
 
       - name: Publish Release
         if: ${{ inputs.publish }}
@@ -103,16 +105,15 @@ jobs:
       - name: Create Pages folder
         shell: bash
         run: |
-          tmp="build/pages"
-          mkdir "$tmp"
-          cp build/installer-template.unitypackage "$tmp/"
-          cp creator/index.html "$tmp/"
-          cp creator/creator.mjs "$tmp/"
+          mkdir "$PAGES_WORK_DIR"
+          cp "$ACTIONS_WORK_DIR/installer-template.unitypackage" "$PAGES_WORK_DIR/"
+          cp creator/index.html "$PAGES_WORK_DIR/"
+          cp creator/creator.mjs "$PAGES_WORK_DIR/"
 
       - uses: actions/upload-artifact@v3
         with:
           name: pages-artifact
-          path: build/pages/
+          path: ${{ env.PAGES_WORK_DIR }}
 
       - name: publish release to github
         if: ${{ inputs.publish }}
@@ -123,9 +124,9 @@ jobs:
           sleep 1
           # upload release assets
           gh release create "v$VERSION" \
-            "build/installer-creator.unitypackage" \
-            "build/installer-template.unitypackage" \
-            "build/$PKG_NAME-$VERSION.zip" \
+            "$ACTIONS_WORK_DIR/installer-creator.unitypackage" \
+            "$ACTIONS_WORK_DIR/installer-template.unitypackage" \
+            "$ACTIONS_WORK_DIR/$PKG_NAME-$VERSION.zip" \
             "$CREATOR_PKG_ROOT/package.json" \
             "creator/creator.mjs" \
 
