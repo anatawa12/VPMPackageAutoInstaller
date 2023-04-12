@@ -333,7 +333,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             private static void FreeCsMemory(IntPtr handle)
             {
-                OwnHandle<object>(handle);
+                if (IntPtr.Zero != handle) OwnHandle<object>(handle);
             }
 
             private static bool VerifyUrl(in RsSlice url)
