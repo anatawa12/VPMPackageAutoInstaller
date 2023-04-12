@@ -175,6 +175,25 @@ mod interlop {
     }
 
     #[repr(C)]
+    pub(crate) struct CsErr {
+        pub str: CsStr,
+        pub as_id: i32,
+    }
+
+    impl CsErr {
+        pub fn invalid() -> Self {
+            Self {
+                str: CsStr::invalid(),
+                as_id: 0,
+            }
+        }
+
+        pub fn is_invalid(&self) -> bool {
+            self.str.is_invalid()
+        }
+    }
+
+    #[repr(C)]
     pub(crate) struct NativeCsData {
         pub(crate) version: u64,
         version_mismatch: extern "system" fn () -> (),
@@ -197,17 +216,17 @@ mod interlop {
         // http client
         pub(crate) web_client_new: extern "system" fn (version: &RsStr) -> CsHandle,
         pub(crate) web_request_new_get: extern "system" fn (this: CsHandleRef, url: &RsStr) -> CsHandle,
-        pub(crate) web_request_add_header: extern "system" fn (this: CsHandleRef, name: &RsStr, value: &RsStr, err: &mut CsStr),
+        pub(crate) web_request_add_header: extern "system" fn (this: CsHandleRef, name: &RsStr, value: &RsStr, err: &mut CsErr),
         // important: not ref: rust throw away the ownership
-        pub(crate) web_request_send: extern "system" fn (this: CsHandle, result: &mut CsHandle, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_request_send: extern "system" fn (this: CsHandle, result: &mut CsHandle, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
         pub(crate) web_response_status: extern "system" fn (this: CsHandleRef) -> u32,
         pub(crate) web_response_headers: extern "system" fn (this: CsHandleRef) -> CsHandle,
         // important: not ref: rust throw away the ownership
         pub(crate) web_response_async_reader: extern "system" fn (this: CsHandle) -> CsHandle,
         // important: not ref: rust throw away the ownership
-        pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandle, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandle, slice: &mut CsSlice<u8>, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
         pub(crate) web_headers_get: extern "system" fn (this: CsHandleRef, name: &RsStr, slice: &mut CsStr),
-        pub(crate) web_async_reader_read: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsStr, context: *const (), callback: fn(*const ()) -> ()),
+        pub(crate) web_async_reader_read: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
     }
 
     impl NativeCsData {

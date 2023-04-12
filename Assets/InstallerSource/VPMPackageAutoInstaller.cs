@@ -359,7 +359,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 NewHandle(new WebRequest(HandleRef<HttpClient>(handle),
                     new HttpRequestMessage(HttpMethod.Get, url.AsString())));
 
-            private static void WebRequestAddHeader(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err)
+            private static void WebRequestAddHeader(IntPtr handle, in RsSlice name, in RsSlice value, out CsErr err)
             {
                 try
                 {
@@ -368,11 +368,11 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 }
                 catch (Exception e)
                 {
-                    err = CsSlice.Of(e.Message);
+                    err = CsErr.Of(e);
                 }
             }
 
-            private static void WebRequestSend(IntPtr handle, IntPtr* result, CsSlice* err, IntPtr context,
+            private static void WebRequestSend(IntPtr handle, IntPtr* result, CsErr* err, IntPtr context,
                 IntPtr callback)
                 => AsyncCallbacks.WebRequestSend(handle, (IntPtr)result, (IntPtr)err, context, callback);
 
@@ -387,7 +387,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 NewHandle<AsyncReader>(new AsyncReader(() =>
                     OwnHandle<HttpResponseMessage>(handle).Content.ReadAsStreamAsync()));
 
-            private static void WebResponseBytesAsync(IntPtr handle, CsSlice* slice, CsSlice* err, IntPtr context,
+            private static void WebResponseBytesAsync(IntPtr handle, CsSlice* slice, CsErr* err, IntPtr context,
                 IntPtr callback) =>
                 AsyncCallbacks.WebResponseBytesAsync(handle, (IntPtr)slice, (IntPtr)err, context, callback);
 
@@ -397,7 +397,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 header = first == null ? default : CsSlice.Of(first);
             }
 
-            private static void WebAsyncReaderRead(IntPtr handle, CsSlice* slice, CsSlice* err, IntPtr context,
+            private static void WebAsyncReaderRead(IntPtr handle, CsSlice* slice, CsErr* err, IntPtr context,
                 IntPtr callback) =>
                 AsyncCallbacks.WebAsyncReaderRead(handle, (IntPtr)slice, (IntPtr)err, context, callback);
 
@@ -437,7 +437,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     }
                     catch (Exception e)
                     {
-                        unsafe { *(CsSlice *)err = CsSlice.Of(e.Message); }
+                        unsafe { *(CsErr *)err = CsErr.Of(e); }
                     }
                 });
                 var awaiter = task.ConfigureAwait(false).GetAwaiter();
@@ -565,10 +565,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr web_request_new_get_t(IntPtr handle, in RsSlice url);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_request_add_header_t(IntPtr handle, in RsSlice name, in RsSlice value, out CsSlice err);
+            public delegate void web_request_add_header_t(IntPtr handle, in RsSlice name, in RsSlice value, out CsErr err);
             // important: not ref: rust throw away the ownership
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_request_send_t(IntPtr handle, IntPtr *result, CsSlice *err, IntPtr context, IntPtr callback);
+            public delegate void web_request_send_t(IntPtr handle, IntPtr *result, CsErr *err, IntPtr context, IntPtr callback);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate uint web_response_status_t(IntPtr handle);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -577,11 +577,11 @@ namespace Anatawa12.VpmPackageAutoInstaller
             // important: handle is not ref: rust throw away the ownership
             public delegate IntPtr web_response_async_reader_t(IntPtr handle);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_response_bytes_async_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsSlice *err, IntPtr context, IntPtr callback);
+            public delegate void web_response_bytes_async_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsErr *err, IntPtr context, IntPtr callback);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void web_headers_get_t(IntPtr handle, in RsSlice name, out CsSlice header);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_async_reader_read_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsSlice *err, IntPtr context, IntPtr callback);
+            public delegate void web_async_reader_read_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsErr *err, IntPtr context, IntPtr callback);
             
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void async_callback_t(IntPtr callback);
@@ -631,6 +631,25 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 if ((ulong) len >= int.MaxValue)
                     throw new InvalidOperationException("str too big to be string");
                 return UTF8.GetString((byte *)ptr, (int)len);
+            }
+        }
+
+        readonly struct CsErr
+        {
+            public readonly CsSlice str;
+            public readonly int as_id;
+
+            private CsErr(CsSlice str, int asID)
+            {
+                this.str = str;
+                as_id = asID;
+            }
+
+            public static CsErr Of(Exception exception)
+            {
+                return new CsErr(
+                    str: CsSlice.Of(exception.Message), 
+                    asID: exception is IOException ioe ? ioe.HResult : 0);
             }
         }
 

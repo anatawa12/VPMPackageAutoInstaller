@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display, Formatter, Write};
 use std::future::Future;
+use std::io;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -9,7 +10,7 @@ use std::task::Poll::{Pending, Ready};
 use futures::Stream;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
-use crate::interlop::{CsHandle, CsSlice, CsStr, native_data, RsStr};
+use crate::interlop::{CsErr, CsHandle, CsSlice, CsStr, native_data, RsStr};
 
 macro_rules! async_wrapper {
     (
@@ -193,10 +194,10 @@ pub struct Request {
 impl Request {
     pub fn header(mut self, name: &str, value: &str) -> Self {
         if let Ok(ptr) = self.ptr.as_ref().map(|x| x.as_ref()) {
-            let mut err = CsStr::invalid();
+            let mut err = CsErr::invalid();
             (native_data().web_request_add_header)(ptr, &RsStr::new(name), &RsStr::new(value), &mut err);
-            if err.is_invalid() {
-                self.ptr = Err(Error::cs(err.to_string()));
+            if let Err(e) = Error::from_cs_or_else(&err, || ()) {
+                self.ptr = Err(e);
             }
         }
         self
@@ -207,7 +208,7 @@ impl Request {
             struct Future -> Result<Response> {
                 ptr: Result<CsHandle> = self.ptr,
                 result: CsHandle = CsHandle::invalid(),
-                err: CsStr = CsStr::invalid(),
+                err: CsErr = CsErr::invalid(),
             },
             |this, wake| {
                 let this_ptr = this as *const _ as *const ();
@@ -219,11 +220,7 @@ impl Request {
                 };
             },
             |this| {
-                if this.err.as_str() != "" {
-                    Err(Error::cs(this.err.to_string()))
-                } else {
-                    Ok(Response { ptr: this.result.take() })
-                }
+                Error::from_cs_or_else(&this.err, || Response { ptr: this.result.take() })
             }
         }
     }
@@ -264,7 +261,7 @@ impl Response {
             struct Future -> Result<CsSlice<u8>> {
                 ptr: CsHandle = self.ptr,
                 slice: CsSlice<u8> = CsSlice::invalid(),
-                err: CsStr = CsStr::invalid(),
+                err: CsErr = CsErr::invalid(),
             },
             |this, wake| {
                 let this_ptr = this as *const _ as *mut ();
@@ -276,13 +273,7 @@ impl Response {
                     wake,
                 )
             },
-            |this| {
-                if this.err.is_invalid() {
-                    Err(Error::cs(this.err.to_string()))
-                } else {
-                    Ok(this.slice.take())
-                }
-            }
+            |this| Error::from_cs_or_else(&this.err, || this.slice.take())
         }
     }
 
@@ -322,7 +313,7 @@ async_wrapper! {
     struct StreamInner -> Result<CsSlice<u8>> {
         ptr: CsHandle,
         slice: CsSlice<u8> = CsSlice::invalid(),
-        err: CsStr = CsStr::invalid(),
+        err: CsErr = CsErr::invalid(),
     },
     |this, wake| {
         let this_ptr = this as *const _ as *mut ();
@@ -334,13 +325,7 @@ async_wrapper! {
             wake,
         )
     },
-    |this| {
-        if this.err.as_str() != "" {
-            Err(Error::cs(this.err.to_string()))
-        } else {
-            Ok(this.slice.take())
-        }
-    }
+    |this| Error::from_cs_or_else(&this.err, || this.slice.take())
 }
 
 pub struct AsStream {
@@ -408,6 +393,7 @@ enum Inner {
     BadScheme(Url),
     ErrorStatusCode(u32),
     CSharpError(String),
+    Io(io::Error),
     JsonError(serde_json::Error),
     ParseUrlError,
 }
@@ -431,6 +417,16 @@ impl Error {
     fn parse_err() -> Error {
         Self::new(Inner::ParseUrlError)
     }
+
+    fn from_cs_or_else<T>(err: &CsErr, f: impl FnOnce() -> T) -> Result<T> {
+        if err.is_invalid() {
+            Ok(f())
+        } else if err.as_id != 0 {
+            Err(Self::new(Inner::Io(io::Error::from_raw_os_error(err.as_id))))
+        } else {
+            Err(Self::cs(err.str.to_string()))
+        }
+    }
 }
 
 impl Display for Error {
@@ -444,6 +440,7 @@ impl Display for Error {
                     write!(f, "HTTP status server error ({})", code)
                 }
             }
+            Inner::Io(e) => Display::fmt(e, f),
             Inner::CSharpError(msg) => f.write_str(msg),
             Inner::JsonError(e) => Display::fmt(e, f),
             Inner::ParseUrlError => f.write_str("http/https url expected"),
