@@ -128,28 +128,28 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     "OK");
             }
 
-            private static bool DisplayDialog(in RsSlice title, in RsSlice message, in RsSlice ok, in RsSlice cancel)
+            private static bool DisplayDialog(IntPtr title, IntPtr message, IntPtr ok, IntPtr cancel)
             {
-                return EditorUtility.DisplayDialog(title.AsString(), message.AsString(), ok.AsString(),
-                    cancel.AsString());
+                return EditorUtility.DisplayDialog((*(RsSlice*)title).AsString(), (*(RsSlice*)message).AsString(),
+                    (*(RsSlice*)ok).AsString(), (*(RsSlice*)cancel).AsString());
             }
 
-            private static void LogError(in RsSlice message)
+            private static void LogError(IntPtr message)
             {
-                Debug.LogError(message.AsString());
+                Debug.LogError((*(RsSlice *)message).AsString());
             }
 
-            private static void GuidToAssetPath(in RustGUID guid, out CsSlice path)
+            private static void GuidToAssetPath(IntPtr guid, IntPtr path)
             {
                 var chars = new char[128 / 4];
                 for (int i = 0; i < 128 / 8; i++)
                 {
-                    var b = guid.bytes[i];
+                    var b = ((RustGUID *)guid)->bytes[i];
                     chars[i * 2 + 0] = "0123456789abcdef"[b >> 4];
                     chars[i * 2 + 0] = "0123456789abcdef"[b & 0xF];
                 }
 
-                path = CsSlice.Of(AssetDatabase.GUIDToAssetPath(new string(chars)));
+                (*(CsSlice *)path) = CsSlice.Of(AssetDatabase.GUIDToAssetPath(new string(chars)));
             }
 
             private static void FreeCsMemory(IntPtr handle)
@@ -157,11 +157,11 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 if (IntPtr.Zero != handle) OwnHandle<object>(handle);
             }
 
-            private static bool VerifyUrl(in RsSlice url)
+            private static bool VerifyUrl(IntPtr url)
             {
                 try
                 {
-                    var parsed = new Uri(url.AsString());
+                    var parsed = new Uri((*(RsSlice *)url).AsString());
                     return parsed.Scheme == "http" || parsed.Scheme == "https";
                 }
                 catch
@@ -170,35 +170,31 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 }
             }
 
-            private static IntPtr WebClientNew(in RsSlice version)
+            private static IntPtr WebClientNew(IntPtr version)
             {
                 var client = new HttpClient();
                 client.DefaultRequestHeaders.Add("User-Agent", 
                     "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
-                    $"vrc-get/{version.AsString()} (github:anatawa12/vrc-get VPAI fork)");
+                    $"vrc-get/{(*(RsSlice *) version).AsString()} (github:anatawa12/vrc-get VPAI fork)");
                 return NewHandle<HttpClient>(client);
             }
 
-            private static IntPtr WebRequestNewGet(IntPtr handle, in RsSlice url) =>
+            private static IntPtr WebRequestNewGet(IntPtr handle, IntPtr url) =>
                 NewHandle(new WebRequest(HandleRef<HttpClient>(handle),
-                    new HttpRequestMessage(HttpMethod.Get, url.AsString())));
+                    new HttpRequestMessage(HttpMethod.Get, (*(RsSlice *)url).AsString())));
 
-            private static void WebRequestAddHeader(IntPtr handle, in RsSlice name, in RsSlice value, out CsErr err)
+            private static void WebRequestAddHeader(IntPtr handle, IntPtr name, IntPtr value, IntPtr err)
             {
                 try
                 {
-                    err = default;
-                    HandleRef<WebRequest>(handle).Request.Headers.Add(name.AsString(), value.AsString());
+                    *(CsErr *)err = default;
+                    HandleRef<WebRequest>(handle).Request.Headers.Add((*(RsSlice *) name).AsString(), (*(RsSlice *)value).AsString());
                 }
                 catch (Exception e)
                 {
-                    err = CsErr.Of(e);
+                    *(CsErr *)err = CsErr.Of(e);
                 }
             }
-
-            private static void WebRequestSend(IntPtr handle, IntPtr* result, CsErr* err, IntPtr context,
-                IntPtr callback)
-                => AsyncCallbacks.WebRequestSend(handle, (IntPtr)result, (IntPtr)err, context, callback);
 
             private static uint WebResponseStatus(IntPtr handle) =>
                 (uint)HandleRef<HttpResponseMessage>(handle).StatusCode;
@@ -211,45 +207,33 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 NewHandle<AsyncReader>(new AsyncReader(() =>
                     OwnHandle<HttpResponseMessage>(handle).Content.ReadAsStreamAsync()));
 
-            private static void WebResponseBytesAsync(IntPtr handle, CsSlice* slice, CsErr* err, IntPtr context,
-                IntPtr callback) =>
-                AsyncCallbacks.WebResponseBytesAsync(handle, (IntPtr)slice, (IntPtr)err, context, callback);
-
-            private static void WebHeadersGet(IntPtr handle, in RsSlice name, out CsSlice header)
+            private static void WebHeadersGet(IntPtr handle, IntPtr name, IntPtr header)
             {
-                var first = HandleRef<HttpResponseHeaders>(handle).GetValues(name.AsString()).FirstOrDefault();
-                header = first == null ? default : CsSlice.Of(first);
+                var first = HandleRef<HttpResponseHeaders>(handle).GetValues((*(RsSlice *)name).AsString()).FirstOrDefault();
+                (*(CsSlice *)header) = first == null ? default : CsSlice.Of(first);
             }
 
-            private static void WebAsyncReaderRead(IntPtr handle, CsSlice* slice, CsErr* err, IntPtr context,
-                IntPtr callback) =>
-                AsyncCallbacks.WebAsyncReaderRead(handle, (IntPtr)slice, (IntPtr)err, context, callback);
-
-            private static void AsyncUnzip(IntPtr fileHandle, in RsSlice destDir, CsErr* err, IntPtr context,
-                IntPtr callback) =>
-                AsyncCallbacks.AsyncUnzip(fileHandle, destDir, (IntPtr)err, context, callback);
-
             // ReSharper disable InconsistentNaming
-            public static readonly NativeCsData.version_mismatch_t version_mismatch = VersionMismatch;
-            public static readonly NativeCsData.display_dialog_t display_dialog = DisplayDialog;
-            public static readonly NativeCsData.log_error_t log_error = LogError;
-            public static readonly NativeCsData.guid_to_asset_path_t guid_to_asset_path = GuidToAssetPath;
-            public static readonly NativeCsData.free_cs_memory_t free_cs_memory = FreeCsMemory;
-            public static readonly NativeCsData.verify_url_t verify_url = VerifyUrl;
-            public static readonly NativeCsData.web_client_new_t web_client_new = WebClientNew;
-            public static readonly NativeCsData.web_request_new_get_t web_request_new_get = WebRequestNewGet;
-            public static readonly NativeCsData.web_request_add_header_t web_request_add_header = WebRequestAddHeader;
+            public static readonly NativeCsData.NoToVoid version_mismatch = VersionMismatch;
+            public static readonly NativeCsData.Ptr4ToBool display_dialog = DisplayDialog;
+            public static readonly NativeCsData.Ptr1ToVoid log_error = LogError;
+            public static readonly NativeCsData.Ptr2ToVoid guid_to_asset_path = GuidToAssetPath;
+            public static readonly NativeCsData.Ptr1ToVoid free_cs_memory = FreeCsMemory;
+            public static readonly NativeCsData.Ptr1ToBool verify_url = VerifyUrl;
+            public static readonly NativeCsData.Ptr1ToPtr web_client_new = WebClientNew;
+            public static readonly NativeCsData.Ptr2ToPtr web_request_new_get = WebRequestNewGet;
+            public static readonly NativeCsData.Ptr4ToVoid web_request_add_header = WebRequestAddHeader;
             // important: not ref: rust throw away the ownership
-            public static readonly NativeCsData.web_request_send_t web_request_send = WebRequestSend;
-            public static readonly NativeCsData.web_response_status_t web_response_status = WebResponseStatus;
-            public static readonly NativeCsData.web_response_headers_t web_response_headers = WebResponseHeaders;
+            public static readonly NativeCsData.Ptr5ToVoid web_request_send = AsyncCallbacks.WebRequestSend;
+            public static readonly NativeCsData.Ptr1ToUInt web_response_status = WebResponseStatus;
+            public static readonly NativeCsData.Ptr1ToPtr web_response_headers = WebResponseHeaders;
             // important: handle is not ref: rust throw away the ownership
-            public static readonly NativeCsData.web_response_async_reader_t web_response_async_reader = WebResponseAsyncReader;
+            public static readonly NativeCsData.Ptr1ToPtr web_response_async_reader = WebResponseAsyncReader;
             // important: handle is not ref: rust throw away the ownership
-            public static readonly NativeCsData.web_response_bytes_async_t web_response_bytes_async = WebResponseBytesAsync;
-            public static readonly NativeCsData.web_headers_get_t web_headers_get = WebHeadersGet;
-            public static readonly NativeCsData.web_async_reader_read_t web_async_reader_read = WebAsyncReaderRead;
-            public static readonly NativeCsData.async_unzip_t async_unzip = AsyncUnzip;
+            public static readonly NativeCsData.Ptr5ToVoid web_response_bytes_async = AsyncCallbacks.WebResponseBytesAsync;
+            public static readonly NativeCsData.Ptr3ToVoid web_headers_get = WebHeadersGet;
+            public static readonly NativeCsData.Ptr5ToVoid web_async_reader_read = AsyncCallbacks.WebAsyncReaderRead;
+            public static readonly NativeCsData.Ptr5ToVoid async_unzip = AsyncCallbacks.AsyncUnzip;
             // ReSharper restore InconsistentNaming
         }
 
@@ -271,10 +255,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 });
                 var awaiter = task.ConfigureAwait(false).GetAwaiter();
                 if (awaiter.IsCompleted)
-                    Marshal.GetDelegateForFunctionPointer<NativeCsData.async_callback_t>(callback)(context);
+                    Marshal.GetDelegateForFunctionPointer<NativeCsData.Ptr1ToVoid>(callback)(context);
                 else
                     awaiter.OnCompleted(() =>
-                        Marshal.GetDelegateForFunctionPointer<NativeCsData.async_callback_t>(callback)(context));
+                        Marshal.GetDelegateForFunctionPointer<NativeCsData.Ptr1ToVoid>(callback)(context));
             }
 
             public static void WebRequestSend(IntPtr handle, IntPtr result, IntPtr err, IntPtr context,
@@ -321,7 +305,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 });
             }
 
-            public static void AsyncUnzip(IntPtr fileHandle, RsSlice destDir, IntPtr err, IntPtr context, IntPtr callback)
+            public static void AsyncUnzip(IntPtr fileHandle, IntPtr destDir, IntPtr err, IntPtr context,
+                IntPtr callback)
             {
                 Async(err, context, callback, async () =>
                 {
@@ -330,7 +315,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                         using (var safeFileHandle = new SafeFileHandle(fileHandle, true))
                         using (var fileStream = new FileStream(safeFileHandle, FileAccess.Write))
                         using (var source = new ZipArchive(fileStream, ZipArchiveMode.Read, false, Encoding.UTF8))
-                            source.ExtractToDirectory(destDir.AsString());
+                            unsafe
+                            {
+                                source.ExtractToDirectory((*(RsSlice*)destDir).AsString());
+                            }
                     });
                 });
             }
@@ -362,7 +350,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         delegate bool vpai_native_entry_point_t(in NativeCsData data);
 
-        unsafe struct NativeCsData
+        struct NativeCsData
         {
             // ReSharper disable MemberHidesStaticFromOuterClass
             public ulong version;
@@ -393,44 +381,30 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void version_mismatch_t();
+            public delegate void NoToVoid();
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate bool display_dialog_t(in RsSlice title, in RsSlice message, in RsSlice ok, in RsSlice cancel);
+            public delegate void Ptr1ToVoid(IntPtr arg0);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void log_error_t(in RsSlice messagePtr);
+            public delegate void Ptr2ToVoid(IntPtr arg0, IntPtr arg1);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void guid_to_asset_path_t(in RustGUID guid, out CsSlice path);
+            public delegate void Ptr3ToVoid(IntPtr arg0, IntPtr arg1, IntPtr arg2);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate bool verify_url_t(in RsSlice guid);
+            public delegate void Ptr4ToVoid(IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void free_cs_memory_t(IntPtr handle);
+            public delegate void Ptr5ToVoid(IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3, IntPtr arg4);
+
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr web_client_new_t(in RsSlice version);
+            public delegate bool Ptr1ToBool(IntPtr arg0);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr web_request_new_get_t(IntPtr handle, in RsSlice url);
+            public delegate bool Ptr4ToBool(IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_request_add_header_t(IntPtr handle, in RsSlice name, in RsSlice value, out CsErr err);
-            // important: not ref: rust throw away the ownership
+            public delegate IntPtr Ptr1ToPtr(IntPtr arg0);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_request_send_t(IntPtr handle, IntPtr *result, CsErr *err, IntPtr context, IntPtr callback);
+            public delegate IntPtr Ptr2ToPtr(IntPtr arg0, IntPtr arg1);
+
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate uint web_response_status_t(IntPtr handle);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr web_response_headers_t(IntPtr handle);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            // important: handle is not ref: rust throw away the ownership
-            public delegate IntPtr web_response_async_reader_t(IntPtr handle);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_response_bytes_async_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsErr *err, IntPtr context, IntPtr callback);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_headers_get_t(IntPtr handle, in RsSlice name, out CsSlice header);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void web_async_reader_read_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsErr *err, IntPtr context, IntPtr callback);
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void async_unzip_t(IntPtr fileHandle, in RsSlice /*<byte>*/ destDir, CsErr* err, IntPtr context, IntPtr callback);
-            
-            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void async_callback_t(IntPtr callback);
+            public delegate uint Ptr1ToUInt(IntPtr handle);
         }
 
         unsafe struct RustGUID {
