@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display, Formatter, Write};
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::io;
 use std::marker::PhantomPinned;
@@ -391,7 +391,6 @@ pub struct Error {
 
 #[derive(Debug)]
 enum Inner {
-    BadScheme(Url),
     ErrorStatusCode(u32),
     CSharpError(String),
     Io(io::Error),
@@ -402,9 +401,6 @@ enum Inner {
 impl Error {
     fn new(inner: Inner) -> Self {
         Self { inner: Box::new(inner) }
-    }
-    fn url_bad_scheme(url: Url) -> Error {
-        Self::new(Inner::BadScheme(url))
     }
     fn status_code(code: u32) -> Error {
         Self::new(Inner::ErrorStatusCode(code))
@@ -433,7 +429,6 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &*self.inner {
-            Inner::BadScheme(_) => f.write_str("URL scheme is not allowed"),
             Inner::ErrorStatusCode(code) => {
                 if matches!(code, 400..=499) {
                     write!(f, "HTTP status client error ({})", code)
