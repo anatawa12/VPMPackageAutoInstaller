@@ -45,14 +45,14 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ConfigGuid,
             // the dll file
             "93e23fe9bbc86463a9790ebfd1fef5eb",
-            // the folder
-            "4b344df74d4849e3b2c978b959abd31b",
             // the dylib for macos
             "e22ab70e285a450ab4bca5c1bddc0bae",
             // the dll for windows
             "7baaaa4fbe0e41bd8296df93266fb25b",
             // the so for linux
             "a3e589d0365a4398bc1e1c69f6fab14a",
+            // the folder
+            "4b344df74d4849e3b2c978b959abd31b",
         };
 
         static VpmPackageAutoInstaller()
