@@ -57,7 +57,7 @@ jobs:
         run: mkdir "$ACTIONS_WORK_DIR"
 
       - name: Build Installer dll
-        run: ./Assets/InstallerSource/DllBuild~/build-and-copy.sh
+        run: ./building/build.sh build_dll
 
       - name: Create Template unitypackage
         uses: anatawa12/sh-actions/create-unitypackage@master
