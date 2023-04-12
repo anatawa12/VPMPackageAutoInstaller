@@ -1,5 +1,5 @@
 use std::future::{Future};
-use async_zip::error::ZipError;
+//use async_zip::error::ZipError;
 use futures::{Stream, TryStream};
 use pin_project_lite::pin_project;
 use serde_json::{Map, Value};
@@ -36,6 +36,7 @@ impl<T> MapResultExt<T> for Result<T, crate::reqwest::Error> {
     }
 }
 
+/*
 impl<T> MapResultExt<T> for Result<T, ZipError> {
     type Output = io::Error;
 
@@ -63,6 +64,7 @@ impl<T> MapResultExt<T> for Result<T, ZipError> {
         })
     }
 }
+//  */
 
 pub(crate) trait JsonMapExt {
     fn get_or_put_mut<Q, V>(&mut self, key: Q, value: impl FnOnce() -> V) -> &mut Value

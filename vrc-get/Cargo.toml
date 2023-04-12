@@ -32,7 +32,6 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-async_zip = { version = "0.0.13", features = ["deflate", "tokio"] }
 clap = { version = "4.2.1", features = ["derive"] }
 dialoguer = { version = "0.10.4", default-features = false }
 env_logger = "0.10.0"

@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter, Write};
 use std::future::Future;
 use std::io;
 use std::marker::PhantomPinned;
+use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -507,5 +508,45 @@ impl <'de> Deserialize<'de> for Url {
         }
 
         deserializer.deserialize_str(UrlVisitor)
+    }
+}
+
+pub fn unzip(zip: std::fs::File, dest_folder: &Path) -> impl Future<Output=io::Result<()>> {
+    #[cfg(unix)]
+        let handle = {
+        use std::os::fd::{IntoRawFd, OwnedFd};
+        OwnedFd::from(zip).into_raw_fd() as isize
+    };
+    #[cfg(windows)] 
+    let handle = {
+        use std::os::windows::io::{OwnedHandle, IntoRawHandle};
+        OwnedHandle::from(zip).into_raw_handle() as isize
+    };
+    async_wrapper! {
+        struct Future -> io::Result<()> {
+            handle: isize = handle,
+            path: String = dest_folder.to_string_lossy().into_owned(),
+            err: CsErr = CsErr::invalid(),
+        },
+        |this, wake| {
+            let this_ptr = this as *const _ as *mut ();
+            (native_data().async_unzip)(
+                this.handle,
+                &RsStr::new(&this.path),
+                &mut this.err,
+                this_ptr,
+                wake,
+            )
+        },
+        |this| {
+            let err = &this.err;
+            if err.is_invalid() {
+                Ok(())
+            } else if err.as_id != 0 {
+                Err(io::Error::from_raw_os_error(err.as_id))
+            } else {
+                Err(io::Error::new(io::ErrorKind::Unsupported, err.str.to_string()))
+            }
+        }
     }
 }

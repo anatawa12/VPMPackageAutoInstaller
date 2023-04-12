@@ -52,34 +52,7 @@ async fn add_remote_package(
         download_zip(http, headers, &zip_path, &sha_path, &zip_file_name, &package.url).await?
     };
 
-    // remove dest folder before extract if exists
-    remove_dir_all(&dest_folder).await.ok();
-
-    // extract zip file
-    let mut zip_reader = async_zip::tokio::read::seek::ZipFileReader::new(zip_file)
-        .await
-        .err_mapped()?;
-    for i in 0..zip_reader.file().entries().len() {
-        let entry = zip_reader.file().entries()[i].entry();
-        let path = dest_folder.join(entry.filename());
-        if !check_path(Path::new(entry.filename())) {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!("directory traversal detected: {}", path.display()),
-            )
-                .into());
-        }
-        if entry.dir() {
-            // if it's directory, just create directory
-            create_dir_all(path).await?;
-        } else {
-            let mut reader = zip_reader.entry(i).await.err_mapped()?;
-            create_dir_all(path.parent().unwrap()).await?;
-            let mut dest_file = File::create(path).await?;
-            tokio::io::copy(&mut reader, &mut dest_file).await?;
-            dest_file.flush().await?;
-        }
-    }
+    crate::reqwest_cs::unzip(zip_file.into_std().await, &dest_folder).await?;
 
     Ok(())
 }

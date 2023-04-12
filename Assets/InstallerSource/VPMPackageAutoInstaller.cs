@@ -28,6 +28,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -35,6 +36,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
 
@@ -249,6 +251,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 web_response_bytes_async = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_response_bytes_async),
                 web_headers_get = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_headers_get),
                 web_async_reader_read = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.web_async_reader_read),
+                async_unzip = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.async_unzip),
             };
 
             try
@@ -401,6 +404,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 IntPtr callback) =>
                 AsyncCallbacks.WebAsyncReaderRead(handle, (IntPtr)slice, (IntPtr)err, context, callback);
 
+            private static void AsyncUnzip(IntPtr fileHandle, in RsSlice destDir, CsErr* err, IntPtr context,
+                IntPtr callback) =>
+                AsyncCallbacks.AsyncUnzip(fileHandle, destDir, (IntPtr)err, context, callback);
+
             // ReSharper disable InconsistentNaming
             public static readonly NativeCsData.version_mismatch_t version_mismatch = VersionMismatch;
             public static readonly NativeCsData.display_dialog_t display_dialog = DisplayDialog;
@@ -421,6 +428,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public static readonly NativeCsData.web_response_bytes_async_t web_response_bytes_async = WebResponseBytesAsync;
             public static readonly NativeCsData.web_headers_get_t web_headers_get = WebHeadersGet;
             public static readonly NativeCsData.web_async_reader_read_t web_async_reader_read = WebAsyncReaderRead;
+            public static readonly NativeCsData.async_unzip_t async_unzip = AsyncUnzip;
             // ReSharper restore InconsistentNaming
         }
 
@@ -491,6 +499,20 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     }
                 });
             }
+
+            public static void AsyncUnzip(IntPtr fileHandle, RsSlice destDir, IntPtr err, IntPtr context, IntPtr callback)
+            {
+                Async(err, context, callback, async () =>
+                {
+                    await Task.Run(() =>
+                    {
+                        using (var safeFileHandle = new SafeFileHandle(fileHandle, true))
+                        using (var fileStream = new FileStream(safeFileHandle, FileAccess.Write))
+                        using (var source = new ZipArchive(fileStream, ZipArchiveMode.Read, false, Encoding.UTF8))
+                            source.ExtractToDirectory(destDir.AsString());
+                    });
+                });
+            }
         }
 
         class WebRequest
@@ -545,6 +567,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public IntPtr web_response_bytes_async;
             public IntPtr web_headers_get;
             public IntPtr web_async_reader_read;
+            public IntPtr async_unzip;
             // ReSharper restore MemberHidesStaticFromOuterClass
 
 
@@ -582,6 +605,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             public delegate void web_headers_get_t(IntPtr handle, in RsSlice name, out CsSlice header);
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void web_async_reader_read_t(IntPtr handle, CsSlice/*<byte>*/ *slice, CsErr *err, IntPtr context, IntPtr callback);
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate void async_unzip_t(IntPtr fileHandle, in RsSlice /*<byte>*/ destDir, CsErr* err, IntPtr context, IntPtr callback);
             
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate void async_callback_t(IntPtr callback);

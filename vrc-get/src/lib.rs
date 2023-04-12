@@ -227,6 +227,8 @@ mod interlop {
         pub(crate) web_response_bytes_async: extern "system" fn (this: CsHandle, slice: &mut CsSlice<u8>, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
         pub(crate) web_headers_get: extern "system" fn (this: CsHandleRef, name: &RsStr, slice: &mut CsStr),
         pub(crate) web_async_reader_read: extern "system" fn (this: CsHandleRef, slice: &mut CsSlice<u8>, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
+        // others
+        pub(crate) async_unzip: extern "system" fn (file_handle: isize, dest_dir: &RsStr, err: &mut CsErr, context: *const (), callback: fn(*const ()) -> ()),
     }
 
     impl NativeCsData {
