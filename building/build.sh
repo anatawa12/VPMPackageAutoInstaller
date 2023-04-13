@@ -19,6 +19,12 @@ build_dll() {
   cp "$BUID_DIR/com.anatawa12.vpm-package-auto-installer.dll.meta" "$INSTALLER_DIR/"
 }
 
+build_rs() {
+  pushd "$REPO_ROOT/vrc-get" > /dev/null
+  cargo +nightly build --release -Z build-std -Z build-std-features=panic-unwind "$@"
+  popd > /dev/null
+}
+
 build() {
   build_dll
 }

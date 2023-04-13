@@ -20,8 +20,7 @@ jobs:
           key: Library-${{ matrix.projectPath }}
           restore-keys: Library-
       - name: Build Installer library
-        if: false # not implemented
-        run: ./building/build.sh build_rs
+        run: ./building/build.sh build_rs --target x86_64-unknown-linux-gnu
       - name: Build Installer dll
         run: ./building/build.sh build_dll
 
