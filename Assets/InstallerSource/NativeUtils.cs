@@ -539,9 +539,51 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         public static CsErr Of(Exception exception)
         {
-            return new CsErr(
-                str: CsSlice.Of(exception.Message),
-                asID: exception is IOException ioe ? ioe.HResult : 0);
+            var hResult = exception is IOException ioe ? ioe.HResult : 0;
+            var osError = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? hResult : OsErr(hResult);
+            return new CsErr(str: CsSlice.Of(exception.Message), asID: osError);
+        }
+
+        private static int OsErr(int hResult)
+        {
+            switch (hResult)
+            {
+                case 0x10042: return 1; // EPERM
+                case 0x1002D: return 2; // ENOENT
+                case 0x1004A: return 3; // ESRCH
+                case 0x1001B: return 4; // EINTR
+                case 0x1001D: return 5; // EIO
+                case 0x1003F: return 6; // ENXIO
+                case 0x10001: return 7; // E2BIG
+                case 0x1002E: return 8; // ENOEXEC
+                case 0x10008: return 9; // EBADF
+                case 0x1000C: return 10; // ECHILD
+                case 0x10010: return 11; // EDEADLK
+                case 0x10031: return 12; // ENOMEM
+                case 0x10002: return 13; // EACCES
+                case 0x10015: return 14; // EFAULT
+                //case 0x10000: return 15; // ENOTBLK
+                case 0x1000A: return 16; // EBUSY
+                case 0x10014: return 17; // EEXIST
+                case 0x1004F: return 18; // EXDEV
+                case 0x1002C: return 19; // ENODEV
+                case 0x10039: return 20; // ENOTDIR
+                case 0x1001F: return 21; // EISDIR
+                case 0x1001C: return 22; // EINVAL
+                case 0x10029: return 23; // ENFILE
+                case 0x10021: return 24; // EMFILE
+                case 0x1003E: return 25; // ENOTTY
+                case 0x1004E: return 26; // ETXTBSY
+                case 0x10016: return 27; // EFBIG
+                case 0x10034: return 28; // ENOSPC
+                case 0x10049: return 29; // ESPIPE
+                case 0x10048: return 30; // EROFS
+                case 0x10022: return 31; // EMLINK
+                case 0x10043: return 32; // EPIPE
+                case 0x10012: return 33; // EDOM
+                case 0x10047: return 34; // ERANGE
+                default: return 0;
+            }
         }
     }
 }
