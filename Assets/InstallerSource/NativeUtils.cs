@@ -48,6 +48,14 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         public static unsafe bool Call(byte[] bytes)
         {
+            var guid = GetGuid();
+
+            if (guid == null)
+            {
+                EditorUtility.DisplayDialog("ERROR", "VPAI Installer\nUnsupported OS or Arch", "OK");
+                return false;
+            }
+
             var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 
             var data = new NativeCsData
@@ -80,8 +88,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             try
             {
-                // TODO find dll based on platform
-                var path = AssetDatabase.GUIDToAssetPath("e22ab70e285a450ab4bca5c1bddc0bae");
+                var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (string.IsNullOrEmpty(path)) throw new InvalidOperationException("lib not found");
                 using (var lib = LibLoader.LibLoader.LoadLibrary(path))
                 {
@@ -102,6 +109,32 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     FixedKeep.RemoveAt(FixedKeep.Count - 1);
                 }
             }
+        }
+
+        private static string GetGuid()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    return "e9bbc86463a9790ebfd1fef5eb";
+                return null;
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    return "e22ab70e285a450ab4bca5c1bddc0bae";
+                return null;
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    return "7baaaa4fbe0e41bd8296df93266fb25b";
+                return null;
+            }
+
+            return null;
         }
 
         public static IntPtr NewHandle<T>(T handle, GCHandleType type = GCHandleType.Normal) where T : class
