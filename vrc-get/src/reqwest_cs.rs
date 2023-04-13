@@ -239,9 +239,9 @@ impl Response {
     pub fn error_for_status(self) -> Result<Self> {
         let status = self.status();
         if matches!(status, 400..=599) {
-            Ok(self)
-        } else {
             Err(Error::status_code(status))
+        } else {
+            Ok(self)
         }
     }
 
