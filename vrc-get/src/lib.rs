@@ -423,7 +423,7 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
             }
         }
 
-        if display_dialog("Confirm", &confirm_message, "Install", "Cancel") {
+        if !display_dialog("Confirm", &confirm_message, "Install", "Cancel") {
             return Ok(false);
         }
     }
