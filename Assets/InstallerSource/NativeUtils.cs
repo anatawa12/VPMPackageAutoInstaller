@@ -44,6 +44,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 {
     static class NativeUtils
     {
+        public static bool FunctionPointerValid = false;
         private static readonly List<GCHandle> FixedKeep = new List<GCHandle>();
 
         public static unsafe bool Call(byte[] bytes)
@@ -92,6 +93,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 if (string.IsNullOrEmpty(path)) throw new InvalidOperationException("lib not found");
                 using (var lib = LibLoader.LibLoader.LoadLibrary(path))
                 {
+                    FunctionPointerValid = true;
                     var ptr = lib.GetAddress("vpai_native_entry_point");
                     Debug.Log($"found vpai_native_entry_point: {ptr}");
 
@@ -102,6 +104,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             }
             finally
             {
+                FunctionPointerValid = false;
 
                 while (FixedKeep.Count != 0)
                 {
@@ -307,7 +310,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 Marshal.GetDelegateForFunctionPointer<Ptr1ToVoid>(callback)(context);
             else
                 awaiter.OnCompleted(() =>
-                    Marshal.GetDelegateForFunctionPointer<Ptr1ToVoid>(callback)(context));
+                {
+                    if (FunctionPointerValid)
+                        Marshal.GetDelegateForFunctionPointer<Ptr1ToVoid>(callback)(context);
+                });
         }
 
         public static void WebRequestSend(IntPtr handle, IntPtr result, IntPtr err, IntPtr context,
