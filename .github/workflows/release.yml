@@ -96,8 +96,12 @@ jobs:
 
       - name: Copy native releases
         run: |-
-          cp "$ARTIFACTS_DIR"/native-*/{lib,}vrc_get_vpai.{so,dylib,dll} Assets/com.anatawa12.vpm-package-auto-installer/
-          cp building/{lib,}vrc_get_vpai.{so,dylib,dll}.meta Assets/com.anatawa12.vpm-package-auto-installer/
+          cp "$ARTIFACTS_DIR/native-windows/vrc_get_vpai.dll" \
+            "$ARTIFACTS_DIR/native-linux/libvrc_get_vpai.so" \
+            "$ARTIFACTS_DIR/native-macos/libvrc_get_vpai.dylib" \
+            building/{vrc_get_vpai.dll,libvrc_get_vpai.so,libvrc_get_vpai.dylib}.meta \
+            Assets/com.anatawa12.vpm-package-auto-installer/
+            Assets/com.anatawa12.vpm-package-auto-installer/
 
       - name: Build Installer dll
         run: ./building/build.sh build_dll
