@@ -42,6 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
       - uses: snow-actions/git-config-user@v1.0.0
       - name: build
         shell: bash
