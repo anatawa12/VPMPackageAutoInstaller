@@ -15,12 +15,41 @@ env:
   PKG_NAME: com.anatawa12.vpm-package-auto-installer.creator
   ACTIONS_WORK_DIR: build
   PAGES_WORK_DIR: build/pages
+  ARTIFACTS_DIR: build/artifacts
 
 concurrency:
   group: publish
   cancel-in-progress: true
 
 jobs:
+  build-native:
+    strategy:
+      matrix: 
+        include:
+          - runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: native-windows
+            file: vrc_get_vpai.dll
+          - runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: native-linux
+            file: libvrc_get_vpai.so
+          - runs-on: macos-latest
+            target: x86_64-apple-darwin
+            artifact: native-macos
+            file: libvrc_get_vpai.dylib
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: snow-actions/git-config-user@v1.0.0
+      - name: build
+        shell: bash
+        run: ./building/build.sh build_rs --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact }}
+          path: vrc-get/target/${{ matrix.target }}/release/${{ matrix.file }}
+
   create-release:
     runs-on: ubuntu-latest
     environment: ${{ inputs.publish && 'master-branch' || '' }}
@@ -55,6 +84,16 @@ jobs:
 
       - name: Prepare build folder
         run: mkdir "$ACTIONS_WORK_DIR"
+
+      - name: Download built native release
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{ env.ARTIFACTS_DIR }}
+
+      - name: Copy native releases
+        run: |-
+          cp "$ARTIFACTS_DIR"/native-*/{lib,}vrc_get_vpai.{so,dylib,dll} Assets/com.anatawa12.vpm-package-auto-installer/
+          cp building/{lib,}vrc_get_vpai.{so,dylib,dll}.meta Assets/com.anatawa12.vpm-package-auto-installer/
 
       - name: Build Installer dll
         run: ./building/build.sh build_dll
