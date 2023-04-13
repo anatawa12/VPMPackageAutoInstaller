@@ -95,7 +95,6 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 {
                     FunctionPointerValid = true;
                     var ptr = lib.GetAddress("vpai_native_entry_point");
-                    Debug.Log($"found vpai_native_entry_point: {ptr}");
 
                     var nativeEntryPoint = Marshal.GetDelegateForFunctionPointer<Ptr1ToBool>(ptr);
 
