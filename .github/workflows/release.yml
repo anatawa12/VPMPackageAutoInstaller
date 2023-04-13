@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build-native:
     strategy:
-      matrix: 
+      matrix:
         include:
           - runs-on: windows-latest
             target: x86_64-pc-windows-msvc
@@ -34,10 +34,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact: native-linux
             file: libvrc_get_vpai.so
-          - runs-on: macos-latest
-            target: x86_64-apple-darwin
-            artifact: native-macos
-            file: libvrc_get_vpai.dylib
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v3
@@ -53,10 +49,31 @@ jobs:
           name: ${{ matrix.artifact }}
           path: vrc-get/target/${{ matrix.target }}/release/${{ matrix.file }}
 
+  build-native-macos:
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+          components: rust-src
+      - uses: snow-actions/git-config-user@v1.0.0
+      - name: build
+        shell: bash
+        run: ./building/build.sh build_rs --target x86_64-apple-darwin --target aarch64-apple-darwin
+      - run: lipo -create -output vrc-get/target/libvrc_get_vpai.dylib 
+          vrc-get/target/{x86_64-apple-darwin,aarch64-apple-darwin}/release/libvrc_get_vpai.dylib
+      - uses: actions/upload-artifact@v3
+        with:
+          name: native-macos
+          path: vrcvrc-get/target/libvrc_get_vpai.dylib
+
   create-release:
     runs-on: ubuntu-latest
     environment: ${{ inputs.publish && 'master-branch' || '' }}
-    needs: build-native
+    needs: 
+      - build-native
+      - build-native-macos
     outputs:
       version: ${{ steps.update-version.outputs.version }}
     steps:
