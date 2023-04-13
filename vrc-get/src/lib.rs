@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer};
 use serde::de::{Error, MapAccess, Visitor};
 use serde::de::value::{MapAccessDeserializer, StrDeserializer};
-use crate::interlop::{display_dialog, log_error};
+use crate::interlop::{display_dialog, log_error, prompt_enabled};
 use crate::interlop::NativeCsData;
 use crate::version::VersionRange;
 use crate::vpm::{AddPackageErr, Environment, UnityProject, VersionSelector};
@@ -204,6 +204,7 @@ mod interlop {
         pub(crate) config_len: usize,
 
         // vtable
+        pub(crate) prompt_enabled: extern "system" fn () -> bool,
         pub(crate) display_dialog: extern "system" fn (title: &RsStr, message: &RsStr, ok: &RsStr, cancel: &RsStr) -> bool,
         pub(crate) log_error: extern "system" fn (message: &RsStr),
         pub(crate) guid_to_asset_path: extern "system" fn (
@@ -308,6 +309,10 @@ mod interlop {
         }
     }
 
+    pub fn prompt_enabled() -> bool {
+        (native_data().prompt_enabled)()
+    }
+
     pub fn display_dialog(title: &str, message: &str, ok: &str, cancel: &str) -> bool {
         (native_data().display_dialog)(
             &RsStr::new(title),
@@ -389,9 +394,7 @@ async fn vpai_native_impl_async(data: &NativeCsData) -> Result<bool, (io::Error,
         return Ok(false);
     }
 
-    // always compute prompt
-    // TODO: check for no prompt
-    if true {
+    if prompt_enabled() {
         let mut confirm_message = "You're installing the following packages:".to_string();
 
         for (name, version) in request.locked().iter().map(|x| (x.name(), x.version()))

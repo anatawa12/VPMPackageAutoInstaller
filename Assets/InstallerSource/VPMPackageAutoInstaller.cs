@@ -113,7 +113,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         }
 
 
-        private static bool IsNoPrompt()
+        public static bool IsNoPrompt()
         {
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
             BuildTargetGroup buildTargetGroup = BuildPipeline.GetBuildTargetGroup(target);

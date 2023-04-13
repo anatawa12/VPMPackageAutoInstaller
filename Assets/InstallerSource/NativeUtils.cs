@@ -26,7 +26,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -67,6 +66,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 config_ptr = handle.AddrOfPinnedObject(),
                 config_len = bytes.Length,
 
+                prompt_enabled = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.prompt_enabled),
                 display_dialog = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.display_dialog),
                 log_error = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.log_error),
                 guid_to_asset_path = Marshal.GetFunctionPointerForDelegate(UnsafeCallbacks.guid_to_asset_path),
@@ -169,6 +169,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 "OK");
         }
 
+        private static bool PromptEnabled() => !VpmPackageAutoInstaller.IsNoPrompt();
+
         private static bool DisplayDialog(IntPtr title, IntPtr message, IntPtr ok, IntPtr cancel)
         {
             return EditorUtility.DisplayDialog((*(RsSlice*)title).AsString(), (*(RsSlice*)message).AsString(),
@@ -257,6 +259,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         // ReSharper disable InconsistentNaming
         public static readonly NoToVoid version_mismatch = VersionMismatch;
+        public static readonly NoToBool prompt_enabled = PromptEnabled;
         public static readonly Ptr4ToBool display_dialog = DisplayDialog;
         public static readonly Ptr1ToVoid log_error = LogError;
         public static readonly Ptr2ToVoid guid_to_asset_path = GuidToAssetPath;
@@ -417,6 +420,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         public int config_len;
 
         // config json info. might not be utf8
+        public IntPtr prompt_enabled;
         public IntPtr display_dialog;
         public IntPtr log_error;
         public IntPtr guid_to_asset_path;
@@ -455,6 +459,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate void Ptr5ToVoid(IntPtr arg0, IntPtr arg1, IntPtr arg2, IntPtr arg3, IntPtr arg4);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    public delegate bool NoToBool();
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate bool Ptr1ToBool(IntPtr arg0);
