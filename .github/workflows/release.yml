@@ -50,7 +50,7 @@ jobs:
           path: vrc-get/target/${{ matrix.target }}/release/${{ matrix.file }}
 
   build-native-macos:
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
