@@ -53,6 +53,7 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     environment: ${{ inputs.publish && 'master-branch' || '' }}
+    needs: build-native
     outputs:
       version: ${{ steps.update-version.outputs.version }}
     steps:
