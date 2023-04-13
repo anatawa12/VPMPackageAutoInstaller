@@ -45,18 +45,17 @@ namespace Anatawa12.VpmPackageAutoInstaller.LibLoader
             protected internal override void CloseLibrary(IntPtr library) => dlclose(library);
         }
 
-        // TODO: test
         class LinuxLibLoader : LibLoader
         {
             private const int RTLD_NOW = 0x2;
 
-            [DllImport("dl")]
+            [DllImport("libdl.so.2")]
             private static extern IntPtr dlopen(string filename, int flag);
 
-            [DllImport("dl")]
+            [DllImport("libdl.so.2")]
             private static extern IntPtr dlsym(IntPtr handle, string name);
 
-            [DllImport("dl")]
+            [DllImport("libdl.so.2")]
             private static extern int dlclose(IntPtr handle);
 
             protected internal override IntPtr OpenLibrary(string path) => dlopen(filename: path, RTLD_NOW);
@@ -64,7 +63,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.LibLoader
             protected internal override void CloseLibrary(IntPtr library) => dlclose(library);
         }
 
-        // TODO: test
         class WindowsLibLoader : LibLoader
         {
             [DllImport("kernel32")]
