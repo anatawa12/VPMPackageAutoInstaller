@@ -116,7 +116,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
-                    return "e9bbc86463a9790ebfd1fef5eb";
+                    return "7baaaa4fbe0e41bd8296df93266fb25b";
                 return null;
             }
 
@@ -130,7 +130,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
-                    return "7baaaa4fbe0e41bd8296df93266fb25b";
+                    return "a3e589d0365a4398bc1e1c69f6fab14a";
                 return null;
             }
 
