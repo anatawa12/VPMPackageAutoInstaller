@@ -1,6 +1,6 @@
 This folder contains C# reimplementation of [vrc-get].
 
-Currently based on [`3e72e1156b9accfebaed2483d78d142c4da269cc`][commit].
+Currently based on [`d4bfcb6cbfe6584c8931a41bae34db7b3133d584`][commit].
 
 [vrc-get]: https://github.com/anatawa12/vrc-get
-[commit]: https://github.com/anatawa12/vrc-get/commit/1a8138ca1277aa64f7e1eae1e41fe076480c8997
+[commit]: https://github.com/anatawa12/vrc-get/commit/d4bfcb6cbfe6584c8931a41bae34db7b3133d584

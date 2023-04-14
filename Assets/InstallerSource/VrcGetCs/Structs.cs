@@ -153,7 +153,7 @@ namespace Anatawa12.VrcGet
         public LocalCachedRepository(JsonObj json)
         {
             _repo = new Repository(json.Get("repo", JsonType.Obj, true));
-            _headers = JsonUtils.ToDictionary(json.Get("versions", JsonType.Obj, true), x => (string)x);
+            _headers = JsonUtils.ToDictionary(json.Get("headers", JsonType.Obj, true), x => (string)x);
             vrc_get = json.Get("vrc-get", JsonType.Obj, true) is JsonObj vrcGetMeta ? new VrcGetMeta(vrcGetMeta) : null;
         }
 

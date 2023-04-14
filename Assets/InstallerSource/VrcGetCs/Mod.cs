@@ -59,9 +59,10 @@ namespace Anatawa12.VrcGet
 
         public async Task load_package_infos()
         {
-            await this.repo_cache.load_repos(await this.get_repo_sources());
+            await this.repo_cache.load_repos(this.get_repo_sources());
             this.update_user_repo_id();
             await this.load_user_package_infos();
+            this.remove_id_duplication();
         }
 
         void update_user_repo_id() {
@@ -83,6 +84,35 @@ namespace Anatawa12.VrcGet
 
                     json[i] = repo.ToJson();
                     this.settings_changed = true;
+                }
+            }
+        }
+
+        void remove_id_duplication() {
+            var user_repos = this.get_user_repos();
+            if (user_repos.len() == 0)
+            {
+                return;
+            }
+
+            var json = this.settings.Get("userRepos", JsonType.List);
+
+            var used_ids = new HashSet<string>();
+            var took = json;
+            this.settings.Put("userRepos", json = new List<object>(took.len()), JsonType.List);
+
+            foreach (var (repo, repo_json) in user_repos.Zip(took, (x, y) => (x, y)))
+            {
+                if (repo.id is string id) {
+                    var modified = used_ids.Add(id);
+                    if (modified) {
+                        // this means new id
+                        json.Add(repo_json);
+                    } else { 
+                        // this means duplicated id: removed so mark as changed
+                        settings_changed = true;
+                        repo_cache.remove_repo(repo.local_path);
+                    }
                 }
             }
         }
@@ -117,55 +147,13 @@ namespace Anatawa12.VrcGet
         }
 
         [ItemNotNull]
-        public async Task<List<RepoSource>> get_repo_sources()
+        public List<RepoSource> get_repo_sources()
         {
-            // collect user repositories
-            var repos_base = get_repos_dir();
-            var user_repos = get_user_repos();
-
-            var userRepoFileNames = new HashSet<string>();
-            userRepoFileNames.Add("vrc-curated.json");
-            userRepoFileNames.Add("vrc-official.json");
-
-            //[CanBeNull]
-            string relative_file_name(string path, string @base)
-            {
-                var dirName = Path.GetDirectoryName(path)
-                    ?.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-                return dirName != @base ? null : Path.GetFileName(path);
-            }
-
-            // normalize
-            repos_base = repos_base.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-
-            user_repos
-                .Select(x => relative_file_name(x.local_path, repos_base))
-                .Where(x => x != null)
-                .AddAllTo(userRepoFileNames);
-
-            IEnumerable<string> TryEnumerateFiles(string path)
-            {
-                try
-                {
-                    return Directory.EnumerateFiles(path).Select(Path.GetFileName);
-                }
-                catch (DirectoryNotFoundException)
-                {
-                    return Array.Empty<string>();
-                }
-            }
-
-            var undefinedRepos = TryEnumerateFiles(repos_base)
-                .Where(x => !userRepoFileNames.Contains(x))
-                .Where(x => x.EndsWith(".json", StringComparison.Ordinal))
-                .Select(x => new UndefinedSource(Path.Combine(repos_base, x)));
-
             var definedSources = PreDefinedRepoSource.Sources.Select(x =>
                 new PreDefinedRepoSource(x, Path.Combine(this.get_repos_dir(), x.file_name)));
-            var userRepoSources = user_repos.Select(x => new UserRepoSource(x));
+            var userRepoSources = get_user_repos().Select(x => new UserRepoSource(x));
 
-            return await Task.Run(() =>
-                undefinedRepos.Concat<RepoSource>(definedSources).Concat(userRepoSources).ToList());
+            return definedSources.Concat<RepoSource>(userRepoSources).ToList();
         }
 
         [ItemNotNull]
@@ -421,20 +409,6 @@ namespace Anatawa12.VrcGet
         public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUserRepo(client, this);
 
         public string file_path() => Setting.local_path;
-    }
-
-    class UndefinedSource : RepoSource
-    {
-        public string Path;
-
-        public UndefinedSource(string path)
-        {
-            Path = path;
-        }
-
-        public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUndefinedRepo(client, this);
-
-        public string file_path() => Path;
     }
 
     static partial class ModStatics
