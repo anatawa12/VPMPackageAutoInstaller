@@ -135,6 +135,7 @@ namespace Anatawa12.VrcGet
             result.Add("localPath", local_path);
             if (name != null) result.Add("name", name);
             if (url != null) result.Add("url", url);
+            if (id != null) result.Add("id", id);
             return result;
         }
     }

@@ -78,7 +78,7 @@ namespace Anatawa12.VrcGet
                 var repo = user_repos[i];
                 var loaded = this.repo_cache.get_repo(repo.local_path);
                 System.Diagnostics.Debug.Assert(loaded != null, nameof(loaded) + " != null");
-                var id = loaded.id();
+                var id = loaded.id() ?? loaded.url() ?? repo.url;
                 if (id != repo.id) {
                     repo.id = id;
 
@@ -103,16 +103,17 @@ namespace Anatawa12.VrcGet
 
             foreach (var (repo, repo_json) in user_repos.Zip(took, (x, y) => (x, y)))
             {
+                var to_add = true;
                 if (repo.id is string id) {
-                    var modified = used_ids.Add(id);
-                    if (modified) {
-                        // this means new id
-                        json.Add(repo_json);
-                    } else { 
-                        // this means duplicated id: removed so mark as changed
-                        settings_changed = true;
-                        repo_cache.remove_repo(repo.local_path);
-                    }
+                    to_add = used_ids.Add(id);
+                }
+                if (to_add) {
+                    // this means new id
+                    json.Add(repo_json);
+                } else { 
+                    // this means duplicated id: removed so mark as changed
+                    settings_changed = true;
+                    repo_cache.remove_repo(repo.local_path);
                 }
             }
         }
