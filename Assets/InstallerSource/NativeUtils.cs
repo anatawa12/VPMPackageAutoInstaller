@@ -539,6 +539,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
         public static CsErr Of(Exception exception)
         {
+            Debug.LogError($"[VPAI] C# side error: {exception}");
             var hResult = exception is IOException ioe ? ioe.HResult : 0;
             var osError = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? hResult : OsErr(hResult);
             return new CsErr(str: CsSlice.Of(exception.Message), asID: osError);
