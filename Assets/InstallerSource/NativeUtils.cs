@@ -371,7 +371,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 await Task.Run(() =>
                 {
                     using (var safeFileHandle = new SafeFileHandle(fileHandle, true))
-                    using (var fileStream = new FileStream(safeFileHandle, FileAccess.Write))
+                    using (var fileStream = new FileStream(safeFileHandle, FileAccess.Read))
                     using (var source = new ZipArchive(fileStream, ZipArchiveMode.Read, false, Encoding.UTF8))
                         unsafe
                         {
