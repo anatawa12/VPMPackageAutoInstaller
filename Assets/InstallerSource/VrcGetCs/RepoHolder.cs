@@ -72,12 +72,6 @@ namespace Anatawa12.VrcGet
             }
         }
 
-        public static async Task<LocalCachedRepository> LoadUndefinedRepo([CanBeNull] HttpClient client,
-            [NotNull] UndefinedSource source)
-        {
-            return await load_local_repo(client, source.Path);
-        }
-
         static async Task<LocalCachedRepository> load_remote_repo(
             [CanBeNull] HttpClient client,
             [CanBeNull] Dictionary<String, String> headers,
@@ -161,6 +155,11 @@ namespace Anatawa12.VrcGet
         public void AddRepository(string path, LocalCachedRepository cache)
         {
             cached_repos_new.Add(path, cache);
+        }
+
+        public void remove_repo(string path)
+        {
+            cached_repos_new.Remove(path);
         }
     }
 }
