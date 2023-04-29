@@ -10,7 +10,7 @@ flate2 = "1.0.26"
 tar = { version = "0.4.38", default-features = false }
 
 [lib]
-crate_type = ["cdylib"]
+crate_type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "vpai-creator"
