@@ -30,6 +30,9 @@ jobs:
           submodules: recursive
           token: ${{ inputs.publish && secrets.MASTER_GITHUB_PAT || github.token }}
       - uses: anatawa12/something-releaser@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: snow-actions/git-config-user@v1.0.0
       - name: Check version is Snapshot
         run: |
@@ -83,12 +86,28 @@ jobs:
           name: vpm-package
           path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
 
+      - name: Build Creator rust
+        run: export TEMPLATE_UNITYPACKAGE_PATH="$(pwd)/build/installer-template.unitypackage" &&
+          cd "creator/rust" && 
+          cargo build --target wasm32-unknown-unknown --release --lib
+      - name: Inject wasm file to creator.mjs
+        run: |
+          # first, create base64 file
+          SOURCE_WASM="$(pwd)/creator/rust/target/wasm32-unknown-unknown/release/vpai_creator.wasm"
+          BASE64_WASM_LINE="$(pwd)/build/vpai_creator.wasm.base64.line"
+          base64 "$SOURCE_WASM" | tr -d '\n' | tr -d '=' | sed 's/^/  const base64 = "/; s/$/";/' > "$BASE64_WASM_LINE"
+          sed -e "/BASE64-INJECT-LINE/{ r build/vpai_creator.wasm.base64.line
+          d }" creator/creator.mjs > build/creator.mjs
+      - uses: actions/upload-artifact@v3
+        with:
+          name: installer-creator-js
+          path: build/creator.mjs
+
       - name: Create Installer unitypackage
         shell: bash
         run: |
           # create creator installer unity package
-          export USE_LOCAL_PREBUILT=1
-          node creator/creator.mjs building/config.json build/installer-creator.unitypackage
+          node build/creator.mjs building/config.json build/installer-creator.unitypackage
 
       - uses: actions/upload-artifact@v3
         with:
@@ -107,7 +126,7 @@ jobs:
           mkdir "$tmp"
           cp build/installer-template.unitypackage "$tmp/"
           cp creator/index.html "$tmp/"
-          cp creator/creator.mjs "$tmp/"
+          cp build/creator.mjs "$tmp/"
 
       - uses: actions/upload-artifact@v3
         with:
@@ -127,7 +146,7 @@ jobs:
             "build/installer-template.unitypackage" \
             "build/$PKG_NAME-$VERSION.zip" \
             "$CREATOR_PKG_ROOT/package.json" \
-            "creator/creator.mjs" \
+            "build/creator.mjs" \
 
       - name: prepare next release & push
         if: ${{ inputs.publish }}
