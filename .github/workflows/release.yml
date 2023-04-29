@@ -87,9 +87,9 @@ jobs:
           path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
 
       - name: Build Creator rust
-        run: cd "creator/rust" &&
-          TEMPLATE_UNITYPACKAGE_PATH="$(pwd)/build/installer-template.unitypackage" 
-            cargo build --target wasm32-unknown-unknown --release --lib
+        run: export TEMPLATE_UNITYPACKAGE_PATH="$(pwd)/build/installer-template.unitypackage" &&
+          cd "creator/rust" && 
+          cargo build --target wasm32-unknown-unknown --release --lib
       - name: Inject wasm file to creator.mjs
         run: |
           # first, create base64 file
