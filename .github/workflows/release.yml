@@ -96,8 +96,8 @@ jobs:
           SOURCE_WASM="$(pwd)/creator/rust/target/wasm32-unknown-unknown/release/vpai_creator.wasm"
           BASE64_WASM_LINE="$(pwd)/build/vpai_creator.wasm.base64.line"
           base64 "$SOURCE_WASM" | tr -d '\n' | tr -d '=' | sed 's/^/  const base64 = "/; s/$/";/' > "$BASE64_WASM_LINE"
-          sed -e "/BASE64-INJECT-LINE/{ d; r build/vpai_creator.wasm.base64.line
-          }" creator/creator.mjs > build/creator.mjs
+          sed -e "/BASE64-INJECT-LINE/{ r build/vpai_creator.wasm.base64.line
+          d }" creator/creator.mjs > build/creator.mjs
       - uses: actions/upload-artifact@v3
         with:
           name: installer-creator-js
