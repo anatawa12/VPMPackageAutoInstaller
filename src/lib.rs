@@ -1,5 +1,6 @@
 use std::io::{Cursor, Read, Result, Write};
 
+static TEMPLATE: &[u8] = include_bytes!(env!("TEMPLATE_UNITYPACKAGE_PATH"));
 
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
@@ -16,8 +17,6 @@ pub extern "C" fn free_memory(ptr: *mut u8, size: usize) {
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
 pub extern "C" fn create_unitypackage_wasm(
-    template_ptr: *const u8, 
-    template_len: usize, 
     json_ptr: *const u8,
     json_len: usize,
 ) -> *const () {
@@ -28,12 +27,11 @@ pub extern "C" fn create_unitypackage_wasm(
         is_err: bool,
     }
 
-    let template = unsafe { std::slice::from_raw_parts(template_ptr, template_len) };
     let json = unsafe { std::slice::from_raw_parts(json_ptr, json_len) };
     let mut out_buf = Vec::<u8>::new();
 
     let result: (Vec<u8>, bool);
-    match create_unitypackage(template, &mut out_buf, json) {
+    match create_unitypackage(&mut out_buf, json) {
         Ok(()) => {
             // ok: return buffer
             result = (out_buf, false);
@@ -54,8 +52,8 @@ pub extern "C" fn create_unitypackage_wasm(
     Box::leak(boxed) as *const Result as _
 }
 
-pub fn create_unitypackage(template: &[u8], output: impl Write, json: &[u8]) -> Result<()> {
-    let decoder = flate2::read::GzDecoder::new(Cursor::new(template));
+pub fn create_unitypackage(output: impl Write, json: &[u8]) -> Result<()> {
+    let decoder = flate2::read::GzDecoder::new(Cursor::new(TEMPLATE));
     let encoder = flate2::write::GzEncoder::new(output, flate2::Compression::default());
 
     make_tar_with_json(decoder, encoder, json)
