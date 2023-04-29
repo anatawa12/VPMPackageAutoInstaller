@@ -174,13 +174,14 @@ jobs:
           name: installer-template
           path: build
 
+      # we cannot use cloudflare/wrangler-action because https://github.com/cloudflare/wrangler-action/issues/16
       - name: Publish to Cloudflare
-        uses: cloudflare/wrangler-action@2.0.0
         env:
           TEMPLATE_UNITYPACKAGE_PATH: ${{ github.workspace }}/build/installer-template.unitypackage
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          workingDirectory: creator/worker
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        working-directory: creator/worker
+        run: |-
+          npx wrangler publish
 
   publish-vpm:
     uses: anatawa12/vpm.anatawa12.com/.github/workflows/update-package.yml@master
