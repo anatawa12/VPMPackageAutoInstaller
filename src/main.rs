@@ -8,7 +8,6 @@ fn help_die(exe: &str) -> ! {
 }
 
 fn main() {
-    env_logger::init();
     let mut args = args();
     let exe = args.next().unwrap();
     let config_path = args.next().unwrap_or_else(|| help_die(&exe));
