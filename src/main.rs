@@ -15,11 +15,9 @@ fn main() {
     let output_path = args.next().unwrap_or_else(|| help_die(&exe));
 
     let json = std::fs::read_to_string(config_path).expect("reading json");
-    let minified = minify::json::minify(&json);
-
     let mut output = std::fs::File::create(output_path).expect("creating output");
 
-    vpai_creator::create_unitypackage(&mut output, minified.as_bytes())
+    vpai_creator::create_unitypackage(&mut output, json.as_bytes())
         .expect("creating unity package");
 
     output.flush().expect("creating unity package");
