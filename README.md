@@ -17,13 +17,29 @@ An experimental project to install [vpm] package published in non-official regis
 
 [download-creator-latest]: https://github.com/anatawa12/VPMPackageAutoInstaller/releases/latest/download/installer-creator.unitypackage
 
-#### Web tool
+### Web tool
 
 1. Open website [here][creator-web]
 2. Write config.json
 3. Click `create installer`
 
 [creator-web]: https://anatawa12.github.io/VPMPackageAutoInstaller/
+
+### API
+
+At `https://api.anatawa12.com/create-vpai`, you can create VPAI installer unitypackage.
+All parameters are passed through get param3eter
+
+| name      | required | description                                                                                                               | example                                     |
+|-----------|----------|---------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `name`    | no       | The name of unitypackage will be downloaded. `{}` will be replaced with version nane. (default: `installer.unitypackage`) | `AvatarOptimizer-{}-installer.unitypackage` |
+| `repos[]` | no       | VPM repositories to be added. you can specify multiple repositories at once.                                              | `https://vpm.anatawa12.com/vpm.json`        |
+| `repo`    | no       | Alias of `repos[]`                                                                                                        |                                             |
+| `package` | yes      | Package Name (id) of package the installer is for                                                                         | `com.anatawa12.avatar-optimizer`            |
+| `version` | yes      | Package version (id) of package the installer is for                                                                      | `0.2.x`                                     |
+
+For example, https://api.anatawa12.com/create-vpai/?name=AvatarOptimizer-{}-installer.unitypackage&repo=https://vpm.anatawa12.com/vpm.json&package=com.anatawa12.avatar-optimizer&version=0.2.x
+will make unitypackage for AvatarOptimizer 0.2.x
 
 ### Other ways
 

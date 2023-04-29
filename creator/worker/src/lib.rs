@@ -72,7 +72,7 @@ pub async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response>
         .map_err(|e| Error::RustError(format!("creating unitypackage {e}")))?;
 
     if name.is_empty() {
-        name = Cow::from("installer-template.unitypackage");
+        name = Cow::from("installer.unitypackage");
     } else if !name.ends_with(".unitypackage") {
         name = Cow::Owned(format!("{}.unitypackage", name));
     }
