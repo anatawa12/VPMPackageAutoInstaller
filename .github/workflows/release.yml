@@ -156,6 +156,32 @@ jobs:
           git commit -am "prepare for next version: $VERSION"
           git push && git push --tags
 
+  publish-cloudflare-workers:
+    runs-on: ubuntu-latest
+    if: inputs.publish
+    needs: create-release
+    environment: cloudflare workers
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: v${{ needs.create-release.outputs.version }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: installer-template
+          path: build
+
+      - name: Publish to Cloudflare
+        uses: cloudflare/wrangler-action@2.0.0
+        env:
+          TEMPLATE_UNITYPACKAGE_PATH: ${{ github.workspace }}/build/installer-template.unitypackage
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          workingDirectory: creator/worker
+
   publish-vpm:
     uses: anatawa12/vpm.anatawa12.com/.github/workflows/update-package.yml@master
     if: inputs.publish
