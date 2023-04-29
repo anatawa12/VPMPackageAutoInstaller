@@ -663,7 +663,8 @@ namespace Anatawa12.VrcGet
         public async Task<AddPackageRequest> add_package_request(
         Environment env,
         List<PackageInfo> packages,
-        bool to_dependencies
+        bool to_dependencies,
+        bool allow_prerelease
         ) {
             packages.retain(pkg =>
             {
@@ -700,7 +701,7 @@ namespace Anatawa12.VrcGet
                 );
             }
 
-            var resolved = this.collect_adding_packages(env, locked);
+            var resolved = this.collect_adding_packages(env, locked, allow_prerelease);
 
             var (legacy_files, legacy_folders) = await this.collect_legacy_assets(resolved);
 
@@ -876,6 +877,7 @@ namespace Anatawa12.VrcGet
             // "" key for root dependencies
             [NotNull] public readonly Dictionary<string, VersionRange> requirements;
             [NotNull] public HashSet<string> dependencies;
+            public bool allow_pre;
 
             public DependencyInfo()
             {
@@ -885,9 +887,10 @@ namespace Anatawa12.VrcGet
                 dependencies = new HashSet<string>();
             }
 
-            public DependencyInfo(VersionRange range) : this()
+            public DependencyInfo(VersionRange range, bool allow_pre) : this()
             {
                 requirements.Add("", range);
+                this.allow_pre = allow_pre;
             }
 
             public void add_range(string source, VersionRange range) {
@@ -900,6 +903,7 @@ namespace Anatawa12.VrcGet
 
             public void set_using_info(Version version, HashSet<string> dependencies) {
                 current = version;
+                this.allow_pre |= version.IsPreRelease;
                 this.dependencies = dependencies;
             }
 
@@ -916,7 +920,8 @@ namespace Anatawa12.VrcGet
 
         PackageInfo[] collect_adding_packages(
         Environment env,
-            IEnumerable<PackageInfo> packages
+            IEnumerable<PackageInfo> packages,
+            bool allow_prerelease
     ) {
 
             var dependencies = new Dictionary<string, DependencyInfo>();
@@ -925,7 +930,7 @@ namespace Anatawa12.VrcGet
             // VPAI: we don't need root_dependencies
             foreach (var (name, dep) in this.manifest.dependencies())
             {
-                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(dep.version));
+                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(dep.version), dep.version.IsPreRelease);
             }
 
             // VPAI
@@ -967,8 +972,9 @@ namespace Anatawa12.VrcGet
                     //log::debug!("processing package {name}: dependency {dependency} version {range}");
                     var entry = GetOrPut(dependency);
                     var install = true;
+                    var allow_prerelease1 = entry.allow_pre || allow_prerelease;
 
-                    if (queue.Any(y => y.name() == dependency && range.matches(y.version()))) {
+                    if (queue.Any(y => y.name() == dependency && range.matches(y.version(), allow_prerelease1))) {
                         // if installing version is good, no need to reinstall
                         install = false;
                         //log::debug!("processing package {name}: dependency {dependency} version {range}: pending matches");
@@ -976,7 +982,7 @@ namespace Anatawa12.VrcGet
                         // if already installed version is good, no need to reinstall
                         
                         if (entry.current is Version version) {
-                            if (range.matches(version)) {
+                            if (range.matches(version, allow_prerelease1)) {
                                 //log::debug!("processing package {name}: dependency {dependency} version {range}: existing matches");
                                 install = false;
                             }
@@ -1003,7 +1009,7 @@ namespace Anatawa12.VrcGet
                 if (info.current == null) continue;
                 foreach (var (source, range) in info.requirements)
                 {
-                    if (!range.matches(info.current)) {
+                    if (!range.matches(info.current, info.allow_pre || allow_prerelease)) {
                         throw new VrcGetException($"Conflict with Dependencies: {name} conflicts with {source}");
                     }
                 }
