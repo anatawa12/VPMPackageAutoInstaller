@@ -1,6 +1,20 @@
 use std::io::{Cursor, Read, Result, Write};
 
+
 #[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn alloc_memory(len: usize) -> *const u8 {
+    Box::leak(vec![0u8; len].into_boxed_slice()).as_ptr()
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn free_memory(ptr: *mut u8, size: usize) {
+    drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, size)) });
+}
+
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
 pub extern "C" fn create_unitypackage_wasm(
     template_ptr: *const u8, 
     template_len: usize, 
@@ -29,7 +43,7 @@ pub extern "C" fn create_unitypackage_wasm(
         }
     }
 
-    let leak = result.0.leak();
+    let leak = Box::leak(result.0.into_boxed_slice());
 
     let boxed = Box::new(Result {
         ptr: leak.as_ptr(),
