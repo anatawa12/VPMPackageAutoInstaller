@@ -1,11 +1,13 @@
-use std::io::{Read, Result, Write};
+use std::io::{Cursor, Read, Result, Write};
 
-/**
- * @param template {Uint8Array}
- * @param json {Uint8Array}
- * @return {Uint8Array}
- */
-pub fn make_tar_with_json(template: impl Read, output: impl Write, json: &[u8]) -> Result<()> {
+pub fn create_unitypackage(template: &[u8], output: impl Write, json: &[u8]) -> Result<()> {
+    let decoder = flate2::read::GzDecoder::new(Cursor::new(template));
+    let encoder = flate2::write::GzEncoder::new(output, flate2::Compression::default());
+
+    make_tar_with_json(decoder, encoder, json)
+}
+
+fn make_tar_with_json(template: impl Read, output: impl Write, json: &[u8]) -> Result<()> {
     let mut read_tar = tar::Archive::new(template);
     let mut write_tar = tar::Builder::new(output);
 
@@ -25,7 +27,6 @@ pub fn make_tar_with_json(template: impl Read, output: impl Write, json: &[u8]) 
     }
 
     write_tar.finish()?;
-    write_tar.get_mut().flush()?;
 
     Ok(())
 }
