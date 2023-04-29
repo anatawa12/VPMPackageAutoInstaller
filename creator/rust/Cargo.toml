@@ -14,3 +14,9 @@ crate_type = ["cdylib"]
 
 [[bin]]
 name = "vpai-creator"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = 0
+strip = true
