@@ -179,7 +179,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             VrcGet.AddPackageRequest request;
             try
             {
-                request = await unityProject.add_package_request(env, dependencies, true);
+                request = await unityProject.add_package_request(env, dependencies, true, includePrerelease);
             }
             catch (VrcGet.VrcGetException e)
             {
