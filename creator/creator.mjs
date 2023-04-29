@@ -115,9 +115,9 @@ if (typeof Deno != "undefined") {
 }
 
 async function wasm_binary() {
-  const base64 = "<BASE64-INJECTED>";
+  const base64 = "<BASE64-INJECTED>"; // BASE64-INJECT-LINE
 
-  if (base64 == ("<BASE64" + "-" + "INJECTED>")) {
+  if (base64 == ("<BASE64-INJECTED>")) {
     return new Uint8Array(await (await fetch(new URL("./vpai_creator.wasm", import.meta.url))).arrayBuffer());
   }
 
