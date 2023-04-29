@@ -31,6 +31,8 @@ jobs:
           token: ${{ inputs.publish && secrets.MASTER_GITHUB_PAT || github.token }}
       - uses: anatawa12/something-releaser@v2
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: snow-actions/git-config-user@v1.0.0
       - name: Check version is Snapshot
         run: |
