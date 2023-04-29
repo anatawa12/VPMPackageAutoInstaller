@@ -96,7 +96,7 @@ jobs:
           SOURCE_WASM="$(pwd)/creator/rust/target/wasm32-unknown-unknown/release/vpai_creator.wasm"
           BASE64_WASM_LINE="$(pwd)/build/vpai_creator.wasm.base64.line"
           base64 "$SOURCE_WASM" | tr -d '\n' | tr -d '=' | sed 's/^/  const base64 = "/; s/$/";/' > "$BASE64_WASM_LINE"
-          sed -e "/BASE64-INJECT-LINE/{ r build/vpai_creator.wasm.base64.line
+          sed -e "/BASE64-INJECT-LINE/{ d; r build/vpai_creator.wasm.base64.line
           }" creator/creator.mjs > build/creator.mjs
       - uses: actions/upload-artifact@v3
         with:
@@ -107,7 +107,6 @@ jobs:
         shell: bash
         run: |
           # create creator installer unity package
-          export USE_LOCAL_PREBUILT=1
           node build/creator.mjs building/config.json build/installer-creator.unitypackage
 
       - uses: actions/upload-artifact@v3
