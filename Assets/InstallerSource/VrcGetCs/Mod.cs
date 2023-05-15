@@ -725,6 +725,7 @@ namespace Anatawa12.VrcGet
         const int GuidFolder = 5;
 
         bool is_guid(string guid) =>
+            guid != null && 
             guid.Length == 32 &&
             guid.All(x => ('0' <= x && x <= '9') || ('a' <= x && x <= 'f') || ('A' <= x && x <= 'F'));
 
