@@ -813,10 +813,13 @@ namespace Anatawa12.VrcGet
                 this.manifest.add_dependency(name, dep);
             }
 
-            // then, do install
+            // then, then, try to remove legacy assets
+            await Task.WhenAll(request.legacy_files().Select(remove_file)
+                .Concat(request.legacy_folders().Select(remove_folder)));
+
+            // finally, do install packages
             await this.do_add_packages_to_locked(env, request.locked());
 
-            // finally try to remove legacy assets
             async Task remove_meta_file(string base_path) {
                 try
                 {
@@ -851,9 +854,6 @@ namespace Anatawa12.VrcGet
                 }
                 await remove_meta_file(path);
             }
-
-            await Task.WhenAll(request.legacy_files().Select(remove_file)
-                .Concat(request.legacy_folders().Select(remove_folder)));
         }
 
         private async Task do_add_packages_to_locked(Environment env, IReadOnlyList<PackageInfo> packages)
