@@ -34,6 +34,13 @@ pub async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response>
     let mut name = Cow::from("");
 
     let url = req.url()?;
+
+    if let None = url.query() {
+        let mut response = Response::from_bytes(include_bytes!("index.html").to_vec())?;
+        response.headers_mut().set("Content-Type", "text/html")?;
+        return Ok(response);
+    }
+
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
             "repo" | "repos[]" => repo_urls.push(value),

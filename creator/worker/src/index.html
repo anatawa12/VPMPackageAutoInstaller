@@ -1,0 +1,56 @@
+<!doctype html>
+
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<title>VPAI api call creator</title>
+
+<form>
+    <ul>
+        <li><label>repository: <input required size="100" id="repository" type="url" name="repository" placeholder="https://vpm.anatawa12.com/vpm.json"></label></li>
+        <li><label>package: <input required size="100" id="package" type="text" name="package" placeholder="com.anatawa12.vpm-package-auto-installer.creator"></label></li>
+        <li><label>version: <input required size="100" id="version" type="text" name="version" placeholder="^0.2.0"></label></li>
+        <li><label>fileName: <input size="100" id="file-name" type="text" placeholder="installer-{}.unitypaclage"></label></li>
+        <li><label><input id="prerelease" type="checkbox">include-prerelease</label></li>
+        <li><label>URL: <input type="url" size="100" id="result-url" readonly hidden><span id="error"></span></label></li>
+    </ul>
+</form>
+
+<script>
+    const repositoryInput = document.querySelector("#repository");
+    const packageInput = document.querySelector("#package");
+    const versionInput = document.querySelector("#version");
+    const fileNameInput = document.querySelector("#file-name");
+    const prereleaseInput = document.querySelector("#prerelease");
+    const resultUrlInput = document.querySelector("#result-url");
+    const errorSpan = document.querySelector("#error");
+
+    const onChange = () => {
+        const missing = []
+        if (!repositoryInput.value) missing.push("repository");
+        if (!packageInput.value) missing.push("package");
+        if (!versionInput.value) missing.push("version");
+        if (missing.length !== 0) {
+            resultUrlInput.hidden = true;
+            errorSpan.hidden = false;
+            errorSpan.textContent = `Those fields are empty: ${missing.join(", ")}`;
+            return
+        }
+
+        const queryObj = {
+            'repo': repositoryInput.value,
+            'package': packageInput.value,
+            'version': versionInput.value,
+        };
+
+        if (prereleaseInput.checked)
+            queryObj["prerelease"] = 'true';
+
+        resultUrlInput.hidden = false;
+        errorSpan.hidden = true;
+        resultUrlInput.value = `https://api.anatawa12.com/create-vpai/?${new URLSearchParams(queryObj).toString()}`;
+    }
+
+    [repositoryInput, packageInput, versionInput, fileNameInput, prereleaseInput]
+        .forEach(x => x.addEventListener('change', onChange))
+    onChange();
+</script>
