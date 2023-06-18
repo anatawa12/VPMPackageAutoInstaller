@@ -607,7 +607,7 @@ namespace Anatawa12.VrcGet
             var unityFound = unityProject; //?? findUnityProjectPath();
             var packages = Path.Combine(unityFound, "Packages");
 
-            var manifest = Path.Combine(packages, "Packages/vpm-manifest.json");
+            var manifest = Path.Combine(unityFound, "Packages/vpm-manifest.json");
             var vpmManifest = new VpmManifest(await load_json_or_default(manifest, x => x));
 
             var unlockedPackages = new List<(string, PackageJson)>();
