@@ -15,18 +15,15 @@ namespace Anatawa12.VrcGet
 {
     class RepoHolder
     {
-        [CanBeNull] private readonly HttpClient http;
-
         // the pointer of LocalCachedRepository will never be changed
         [NotNull] readonly Dictionary<string, LocalCachedRepository> cached_repos_new;
 
-        public RepoHolder([CanBeNull] HttpClient http)
+        public RepoHolder()
         {
-            this.http = http;
             cached_repos_new = new Dictionary<string, LocalCachedRepository>();
         }
 
-        internal async Task load_repos([NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
+        internal async Task load_repos([CanBeNull] HttpClient http, [NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
         {
             var repos = await Task.WhenAll(sources.Select(async src =>
                 (await load_repo_from_source(http, src), src.file_path())));
