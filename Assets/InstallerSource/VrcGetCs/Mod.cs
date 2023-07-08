@@ -51,15 +51,16 @@ namespace Anatawa12.VrcGet
                 http: http,
                 settings: await load_json_or_default(Path.Combine(folder, "settings.json"), x => x),
                 globalDir: folder,
-                repoCache: new RepoHolder(http),
+                repoCache: new RepoHolder(),
                 userPackages: new List<(string, PackageJson)>(),
                 settingsChanged: false
             );
         }
 
-        public async Task load_package_infos()
+        public async Task load_package_infos(bool update)
         {
-            await this.repo_cache.load_repos(this.get_repo_sources());
+            var http = update ? this.http : null;
+            await this.repo_cache.load_repos(http, this.get_repo_sources());
             this.update_user_repo_id();
             await this.load_user_package_infos();
             this.remove_id_duplication();
@@ -498,6 +499,7 @@ namespace Anatawa12.VrcGet
             var newEtag = response.Headers.ETag?.ToString();
 
             var content = await response.Content.ReadAsStringAsync();
+            // ReadAsStringAsync skips BOM automatically
             var repo = new Repository(new JsonParser(content).Parse(JsonType.Obj));
             repo.set_url_if_none(url);
             return (repo, newEtag);
@@ -584,6 +586,8 @@ namespace Anatawa12.VrcGet
             await Task.Run(() => { File.WriteAllText(file, JsonWriter.Write(_body)); });
             _changed = false;
         }
+
+        // no mark_and_sweep_packages
     }
 
     #endregion
@@ -593,12 +597,14 @@ namespace Anatawa12.VrcGet
         private readonly string project_dir;
         public readonly VpmManifest manifest; // VPAI: public
         private readonly List<(string dirName, PackageJson manifest)> unlocked_packages;
+        private readonly Dictionary<string, PackageJson> installed_packages;
 
-        private UnityProject(string project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages)
+        private UnityProject(string project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages, Dictionary<string, PackageJson> installed_packages)
         {
             this.project_dir = project_dir;
             this.manifest = manifest;
             this.unlocked_packages = unlockedPackages;
+            this.installed_packages = installed_packages;
         }
 
         public static async Task<UnityProject> find_unity_project([NotNull] string unityProject)
@@ -610,25 +616,33 @@ namespace Anatawa12.VrcGet
             var manifest = Path.Combine(unityFound, "Packages/vpm-manifest.json");
             var vpmManifest = new VpmManifest(await load_json_or_default(manifest, x => x));
 
+            var installed_packages = new Dictionary<string, PackageJson>();
             var unlockedPackages = new List<(string, PackageJson)>();
 
             foreach (var dir in await Task.Run(() => Directory.GetDirectories(packages)))
             {
                 var read = await try_read_unlocked_package(dir, Path.Combine(packages, dir), vpmManifest);
-                if (read != null)
-                    unlockedPackages.Add(read.Value);
+                var is_installed = false;
+                if (read.Item2 is PackageJson parsed)
+                {
+                    if (parsed.name == read.Item1 && vpmManifest.locked().ContainsKey(parsed.name))
+                        is_installed = true;
+                }
+
+                if (is_installed)
+                    installed_packages[read.Item1] = read.Item2;
+                else
+                    unlockedPackages.Add(read);
             }
 
-            return new UnityProject(unityFound, vpmManifest, unlockedPackages);
+            return new UnityProject(unityFound, vpmManifest, unlockedPackages, installed_packages);
         }
 
-        private static async Task<(string, PackageJson)?> try_read_unlocked_package(string name, string path,
+        private static async Task<(string, PackageJson)> try_read_unlocked_package(string name, string path,
             VpmManifest vpmManifest)
         {
             var packageJsonPath = Path.Combine(path, "package.json");
             var parsed = await load_json_or_else(packageJsonPath, x => new PackageJson(x), () => null);
-            if (parsed != null && parsed.name == name && vpmManifest.locked().ContainsKey(name))
-                return null;
             return (name, parsed);
         }
 
@@ -931,7 +945,17 @@ namespace Anatawa12.VrcGet
             // VPAI: we don't need root_dependencies
             foreach (var (name, dep) in this.manifest.dependencies())
             {
-                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(dep.version), dep.version.IsPreRelease);
+                var min_var = dep.version;
+                var allow_pre = dep.version.IsPreRelease;
+
+                if (this.manifest.locked().TryGetValue(name, out var locked))
+                {
+                    allow_pre |= locked.version.IsPreRelease;
+                    if (locked.version < min_var)
+                        min_var = locked.version;
+                }
+
+                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(min_var), allow_pre);
             }
 
             // VPAI
@@ -1039,6 +1063,9 @@ namespace Anatawa12.VrcGet
 
             return lockedDependencies.Concat(unlockedDependencies);
         } 
+
+        // unlocked_packages
+        // get_installed_package
     }
 
     #region VPAI
