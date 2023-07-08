@@ -42,6 +42,9 @@
             'version': versionInput.value,
         };
 
+        if (fileNameInput.value)
+            queryObj["name"] = fileNameInput.value;
+
         if (prereleaseInput.checked)
             queryObj["prerelease"] = 'true';
 
