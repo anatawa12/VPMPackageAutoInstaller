@@ -11,7 +11,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
-using UnityEditor.UI;
 using UnityEngine;
 using static Anatawa12.VrcGet.ModStatics;
 using Version = SemanticVersioning.Version;
