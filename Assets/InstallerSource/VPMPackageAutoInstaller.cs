@@ -161,7 +161,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
             var unityProject = await VrcGet.UnityProject.find_unity_project(Directory.GetCurrentDirectory());
             ShowProgress("Downloading package information...", Progress.DownloadingRepositories);
-            await env.load_package_infos();
+            await env.load_package_infos(true);
 
             ShowProgress("Downloading new repositories...", Progress.DownloadingNewRepositories);
             await Task.WhenAll(config.vpmRepositories.Select(repoUrl => env.AddPendingRepository(repoUrl.url, null, repoUrl.headers)));
