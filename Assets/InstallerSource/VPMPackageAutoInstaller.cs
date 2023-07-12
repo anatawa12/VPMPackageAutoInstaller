@@ -185,7 +185,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 if (!IsNoPrompt())
                     EditorUtility.DisplayDialog("ERROR!",
-                        "Installing package failed due to conflicts\n" +
+                        "Installing package failed due to conflicts:\n" +
+                        e.Message + "\n\n" +
                         "Please see console for more details", "OK");
                 Debug.LogException(e);
                 return false;
