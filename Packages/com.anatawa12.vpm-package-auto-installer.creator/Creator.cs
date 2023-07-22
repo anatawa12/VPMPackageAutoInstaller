@@ -6,13 +6,14 @@ using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace Anatawa12.VpmPackageAutoInstaller.Creator
 {
-    public class VpmPackageAutoInstallerCreator : EditorWindow
+    internal class VpmPackageAutoInstallerCreator : EditorWindow
     {
         [MenuItem("Window/VPMPackageAutoInstallerCreator")]
         public static void OpenGui()
@@ -22,9 +23,19 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 
         private Action _onProjectChange;
 
+        private bool _shouldReload;
+        [CanBeNull] private TextAsset _packageJsonAsset;
+        private SerializedObject _serialized;
+        private SerializedProperty _packages, _repositories;
+        public GuiPackageInfo[] packages = Array.Empty<GuiPackageInfo>();
+        public GuiRepositoryInfo[] repositories = Array.Empty<GuiRepositoryInfo>();
+
         private void OnEnable()
         {
             EditorApplication.projectChanged += _onProjectChange = OnProjectChange;
+            _serialized = new SerializedObject(this);
+            _packages = _serialized.FindProperty(nameof(packages));
+            _repositories = _serialized.FindProperty(nameof(repositories));
         }
 
         private void OnDisable()
@@ -32,51 +43,115 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             EditorApplication.projectChanged -= _onProjectChange;
         }
 
-        private bool _shouldReload;
-        [CanBeNull] private TextAsset _packageJsonAsset;
-        [CanBeNull] private LoadedPackageInfo _loaded;
+        [Serializable]
+        internal struct GuiPackageInfo
+        {
+            public string id;
+            public string version;
+        }
+
+        [Serializable]
+        public class GuiRepositoryInfo
+        {
+            public string url;
+            public HeaderInfo[] headers;
+
+            [CustomPropertyDrawer(typeof(GuiRepositoryInfo))]
+            class EditorImpl : PropertyDrawer
+            {
+                public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+                {
+                    var height = 0f;
+                    // global header
+                    height += EditorGUIUtility.singleLineHeight;
+                    // url
+                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
+                    // headers header
+                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
+                    // headers
+                    height += (EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight) *
+                              property.FindPropertyRelative(nameof(headers)).arraySize;
+                    // add header
+                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
+                    return height;
+                }
+
+                public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+                {
+                    position.height = EditorGUIUtility.singleLineHeight;
+                    property.isExpanded = EditorGUI.Foldout(position, property.isExpanded, label);
+                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                    if (!property.isExpanded) return;
+
+                    EditorGUI.indentLevel++;
+                    EditorGUI.PropertyField(position, property.FindPropertyRelative(nameof(url)));
+                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                    
+                    GUI.Label(EditorGUI.IndentedRect(position), "Headers");
+                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+
+                    {
+                        var headersProp = property.FindPropertyRelative(nameof(headers));
+                        var indentLevelOld = EditorGUI.indentLevel;
+                        var indent = EditorGUI.indentLevel * 15f;
+                        var buttonWidth = EditorGUIUtility.singleLineHeight;
+                        var labelWidth = (position.width - indent - 2.0f - 2.0f - buttonWidth) / 2;
+                        var labelRect = new Rect(position.x + indent, position.y, labelWidth, 18);
+                        var valueRect = new Rect(position.x + labelWidth + indent + 2.0f, position.y,
+                            position.width - labelWidth - indent - 2.0f - 2.0f - buttonWidth, position.height);
+                        var buttonRect = new Rect(position.xMax - 2.0f - buttonWidth, position.y, buttonWidth, 18);
+
+                        EditorGUI.indentLevel = 0;
+                        for (var i = 0; i < headersProp.arraySize; i++)
+                        {
+                            var element = headersProp.GetArrayElementAtIndex(i);
+                            var name = element.FindPropertyRelative(nameof(HeaderInfo.name));
+                            var value = element.FindPropertyRelative(nameof(HeaderInfo.value));
+
+                            name.stringValue = EditorGUI.TextField(labelRect, name.stringValue);
+                            value.stringValue = EditorGUI.TextField(valueRect, value.stringValue);
+                            if (GUI.Button(buttonRect, "x"))
+                                headersProp.DeleteArrayElementAtIndex(i);
+
+                            labelRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                            valueRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                            buttonRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                            position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+                        }
+                        EditorGUI.indentLevel = indentLevelOld;
+
+                        if (GUI.Button(EditorGUI.IndentedRect(position), "Add Header"))
+                            headersProp.arraySize++;
+                    }
+
+                    EditorGUI.indentLevel--;
+                }
+            }
+        }
+
+        [Serializable]
+        public class HeaderInfo
+        {
+            public string name;
+            public string value;
+        }
 
         private void OnGUI()
         {
             EditorGUILayout.LabelField("VPMPackageAutoInstaller Creator");
 
-            var old = _packageJsonAsset;
             _packageJsonAsset =
                 (TextAsset)EditorGUILayout.ObjectField("package.json", _packageJsonAsset, typeof(TextAsset), false);
-            if (_packageJsonAsset != old || _shouldReload)
+            if (GUILayout.Button("Load from package.json"))
                 LoadPackageInfos();
-            _shouldReload = false;
 
-            if (_loaded != null)
-            {
-                // TODO: allow creator to choose from ~, ^ and specific version descriptor.
-                //var tag = EditorGUILayout.TextField("git tag", _tagName ?? _inferredGitInfo.tag ?? "");
-                //if (tag != (_tagName ?? _inferredGitInfo.tag ?? ""))
-                //    _tagName = tag;
+            _serialized.Update();
 
-                if (_loaded.PackagesWithoutRepository.Count != 0)
-                {
-                    var style = new GUIStyle(EditorStyles.label);
-                    style.normal.textColor = Color.yellow;
-                    EditorGUILayout.LabelField("Repository for the following packages Not Found", style);
-                    foreach (var package in _loaded.PackagesWithoutRepository)
-                    {
-                        EditorGUILayout.LabelField($"{package}");
-                    }
-                }
+            EditorGUILayout.PropertyField(_packages);
+            EditorGUILayout.PropertyField(_repositories);
 
-                if (GUILayout.Button("Create Installer"))
-                {
-                    CreateInstaller(_loaded);
-                }
-            }
-            else
-            {
-                if (_packageJsonAsset != null)
-                {
-                    EditorGUILayout.LabelField("The file is not valid package.json");
-                }
-            }
+            _serialized.ApplyModifiedProperties();
+
         }
 
         private static void CreateInstaller([NotNull] LoadedPackageInfo loaded)
@@ -92,7 +167,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 var dependencies = new Dictionary<string, string>
                     { { loaded.RootPackageJson.Name, loaded.RootPackageJson.Version } };
 
-                var configJsonObj = new CreatorConfigJson(dependencies, loaded.Repositories.ToList());
+                var configJsonObj = new CreatorConfigJson(dependencies, loaded.Repositories.Select(x => new ConfigRepositoryInfo(x)).ToList());
                 var configJson = JsonConvert.SerializeObject(configJsonObj);
 
                 var created = PackageCreator.CreateUnityPackage(Encoding.UTF8.GetBytes(configJson));
@@ -122,12 +197,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 #region get / infer manifest info
         private void LoadPackageInfos()
         {
-            if (_packageJsonAsset == null)
-            {
-                _loaded = null;
-                return;
-            }       
-            _loaded = LoadPackageJsonRecursive(_packageJsonAsset);
         }
 
 
@@ -263,7 +332,10 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 let package = kvp.Key
                 from version in kvp.Value.Packages.Keys
                 select (pkg: new PackageInfo(package, version), userRepoInfo);
-            return enumerable.ToDictionary(x => x.pkg, x => x.userRepoInfo);
+            var mapping = new Dictionary<PackageInfo, VpmUserRepo>();
+            foreach (var (pkg, userRepoInfo) in enumerable)
+                mapping[pkg] = userRepoInfo;
+            return mapping;
         }
 
         private static string TryReadAllText(string path)
@@ -499,16 +571,56 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         // ReSharper disable once NotAccessedField.Global
         public Dictionary<string, string> Dependencies;
         [JsonProperty("repositories")]
+        [JsonConverter(typeof(ConfigRepositoryInfo.JsonConverter))]
         // ReSharper disable once NotAccessedField.Global
-        public List<string> Repositories;
+        public List<ConfigRepositoryInfo> Repositories;
 
         public CreatorConfigJson(
             Dictionary<string, string> dependencies,
-            List<string> repositories
+            List<ConfigRepositoryInfo> repositories
         )
         {
             Dependencies = dependencies;
             Repositories = repositories;
+        }
+    }
+
+    internal class ConfigRepositoryInfo
+    {
+        // ReSharper disable once NotAccessedField.Global
+        [JsonProperty("url")]
+        public string Url;
+        // ReSharper disable once NotAccessedField.Global
+        [JsonProperty("headers")]
+        public Dictionary<string, string> Headers;
+
+        public ConfigRepositoryInfo()
+        {
+        }
+
+        public ConfigRepositoryInfo(string url) => Url = url;
+
+        public class JsonConverter : JsonConverter<ConfigRepositoryInfo>
+        {
+            public override ConfigRepositoryInfo ReadJson(JsonReader reader, Type objectType, ConfigRepositoryInfo existingValue,
+                bool hasExistingValue,
+                JsonSerializer serializer)
+            {
+                var token = JToken.Load(reader);
+                return token.Type == JTokenType.String ? new ConfigRepositoryInfo(token.ToString()) : token.ToObject<ConfigRepositoryInfo>(serializer);
+            }
+
+            public override void WriteJson(JsonWriter writer, ConfigRepositoryInfo value, JsonSerializer serializer)
+            {
+                if (value.Headers == null || value.Headers.Count == 0)
+                {
+                    serializer.Serialize(writer, value.Url);
+                }
+                else
+                {
+                    serializer.Serialize(writer, value);
+                }
+            }
         }
     }
 }
