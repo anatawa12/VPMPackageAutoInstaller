@@ -4,7 +4,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -16,11 +15,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 {
     internal class VpmPackageAutoInstallerCreator : EditorWindow
     {
-        [MenuItem("Window/VPMPackageAutoInstallerCreator")]
-        public static void OpenGui()
-        {
-            GetWindow<VpmPackageAutoInstallerCreator>();
-        }
+        [MenuItem("Tools/VPMPackageAutoInstaller Creator")]
+        public static void OpenGui() => GetWindow<VpmPackageAutoInstallerCreator>("VPMPackageAutoInstaller Creator");
 
         private Action _onProjectChange;
 
