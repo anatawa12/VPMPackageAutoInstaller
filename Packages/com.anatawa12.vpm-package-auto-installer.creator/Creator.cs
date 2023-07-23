@@ -40,6 +40,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             _serialized = new SerializedObject(this);
             _packages = _serialized.FindProperty(nameof(packages));
             _repositories = _serialized.FindProperty(nameof(repositories));
+            ComputeErrors();
         }
 
         private void OnDisable()
@@ -159,6 +160,12 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 where !IsValidVersionName(package.version)
                 select $"Version range for {package.id} is not valid");
 
+            if (packages.Length == 0)
+                errors.Add("There is no packages");
+
+            if (packages.Any(x => x.id == ""))
+                errors.Add("There is package with empty id");
+
             errors.AddRange(from url in FindDuplicates(repositories.Select(x => x.url))
                 select $"There are two repository with '{url}'");
 
@@ -166,7 +173,25 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 from header in FindDuplicates(repository.headers.Select(x => x.name.ToLowerInvariant()))
                 select $"There are two or more header named '{header}' for '{repository.url}'.");
 
+            errors.AddRange(from repository in repositories
+                where !IsValidRepositoryUrl(repository.url)
+                select $"Invalid url: '{repository.url}'");
+
+            if (repositories.Length == 0)
+            {
+                if (packages.Length == 0 || packages.All(x => !VRChatPackageManager.VRChatPackages.Contains(x.id)))
+                    errors.Add("No repository specified");
+            }
+
             this.errors = errors.ToArray();
+        }
+
+        private static bool IsValidRepositoryUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+            if (uri.Scheme.ToLowerInvariant() != "http" && uri.Scheme.ToLowerInvariant() != "https") return false;
+            if (uri.Host == "") return false;
+            return true;
         }
 
         private static HashSet<string> FindDuplicates(IEnumerable<string> enumerable)
@@ -183,7 +208,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             return duplicatedNames;
         }
 
-        private bool IsValidVersionName(string range) => SemanticVersioning.Range.TryParse(range, out _);
+        private bool IsValidVersionName(string range) =>
+            !string.IsNullOrWhiteSpace(range) && SemanticVersioning.Range.TryParse(range, out _);
 
         static (Rect, Rect, Rect) SplitRectToTwoAndButton(Rect position)
         {
