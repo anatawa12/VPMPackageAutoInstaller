@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -29,6 +30,9 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         private SerializedProperty _packages, _repositories;
         public GuiPackageInfo[] packages = Array.Empty<GuiPackageInfo>();
         public GuiRepositoryInfo[] repositories = Array.Empty<GuiRepositoryInfo>();
+        public string[] errors = Array.Empty<string>();
+        public string[] warnings = Array.Empty<string>();
+        public Vector2 scroll;
 
         private void OnEnable()
         {
@@ -48,6 +52,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         {
             public string id;
             public string version;
+
+            public GuiPackageInfo(string id, string version) => (this.id, this.version) = (id, version);
         }
 
         [Serializable]
@@ -55,6 +61,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         {
             public string url;
             public HeaderInfo[] headers;
+
+            public GuiRepositoryInfo(string url) => this.url = url;
         }
 
         [Serializable]
@@ -70,18 +78,21 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 
             _packageJsonAsset =
                 (TextAsset)EditorGUILayout.ObjectField("package.json", _packageJsonAsset, typeof(TextAsset), false);
-            if (GUILayout.Button("Load from package.json"))
-                LoadPackageInfos();
+            EditorGUI.BeginDisabledGroup(!_packageJsonAsset);
+            if (GUILayout.Button("Load from package.json") && _packageJsonAsset)
+                LoadPackageJsonRecursive(_packageJsonAsset);
+            EditorGUI.EndDisabledGroup();
 
             _serialized.Update();
 
             EditorGUILayout.Space();
+            EditorGUI.BeginChangeCheck();
 
             EditorGUILayout.LabelField("Packages", EditorStyles.boldLabel);
             {
                 var (labelRect, valueRect, _) = SplitRectToTwoAndButton(EditorGUILayout.GetControlRect());
                 GUI.Label(labelRect, "Package Id");
-                GUI.Label(valueRect, "Package Version");
+                GUI.Label(valueRect, "Package Version Range");
             }
             for (var i = 0; i < _packages.arraySize; i++)
             {
@@ -113,13 +124,66 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             _serialized.ApplyModifiedProperties();
 
             EditorGUILayout.Space();
+            if (EditorGUI.EndChangeCheck())
+                ComputeErrors();
 
+            EditorGUI.BeginDisabledGroup(errors.Length != 0);
             if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Create Installer UnityPackage"))
+                CreateInstaller();
+            EditorGUI.EndDisabledGroup();
+
+            scroll = EditorGUILayout.BeginScrollView(scroll);
+
+            foreach (var error in errors)
+                EditorGUILayout.HelpBox(error, MessageType.Error);
+
+            if (warnings != null && warnings.Length != 0)
             {
-                // TODO
-                CreateInstaller(null);
+                foreach (var warning in warnings)
+                    EditorGUILayout.HelpBox(warning, MessageType.Warning);
+                if (GUILayout.Button("Clear Warnings"))
+                    warnings = Array.Empty<string>();
             }
+            EditorGUILayout.EndScrollView();
         }
+
+        private void ComputeErrors()
+        {
+            // ReSharper disable once LocalVariableHidesMember
+            var errors = new List<string>();
+
+            errors.AddRange(from duplicatedName in FindDuplicates(packages.Select(x => x.id))
+            select $"There are two {duplicatedName}");
+
+            errors.AddRange(from package in packages
+                where !IsValidVersionName(package.version)
+                select $"Version range for {package.id} is not valid");
+
+            errors.AddRange(from url in FindDuplicates(repositories.Select(x => x.url))
+                select $"There are two repository with '{url}'");
+
+            errors.AddRange(from repository in repositories
+                from header in FindDuplicates(repository.headers.Select(x => x.name.ToLowerInvariant()))
+                select $"There are two or more header named '{header}' for '{repository.url}'.");
+
+            this.errors = errors.ToArray();
+        }
+
+        private static HashSet<string> FindDuplicates(IEnumerable<string> enumerable)
+        {
+            var packageNames = new HashSet<string>();
+            var duplicatedNames = new HashSet<string>();
+
+            foreach (var package in enumerable)
+            {
+                if (!packageNames.Add(package))
+                    duplicatedNames.Add(package);
+            }
+
+            return duplicatedNames;
+        }
+
+        private bool IsValidVersionName(string range) => SemanticVersioning.Range.TryParse(range, out _);
 
         static (Rect, Rect, Rect) SplitRectToTwoAndButton(Rect position)
         {
@@ -177,20 +241,21 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             EditorGUILayout.EndVertical();
         }
 
-        private static void CreateInstaller([NotNull] LoadedPackageInfo loaded)
+        private void CreateInstaller()
         {
             try
             {
                 var path = EditorUtility.SaveFilePanel("Create Installer...",
                     "",
-                    (loaded.RootPackageJson.DisplayName ?? loaded.RootPackageJson.Name) + "-installer.unitypackage",
+                    packages[0].id + "-installer.unitypackage",
                     "unitypackage");
                 if (string.IsNullOrEmpty(path)) return;
 
-                var dependencies = new Dictionary<string, string>
-                    { { loaded.RootPackageJson.Name, loaded.RootPackageJson.Version } };
+                var dependencies = packages.ToDictionary(x => x.id, x => x.version);
 
-                var configJsonObj = new CreatorConfigJson(dependencies, loaded.Repositories.Select(x => new ConfigRepositoryInfo(x)).ToList());
+                var configJsonObj = new CreatorConfigJson(dependencies, 
+                    repositories.Select(x => new ConfigRepositoryInfo(x.url,
+                        x.headers.ToDictionary(y => y.name, y => y.value))).ToList());
                 var configJson = JsonConvert.SerializeObject(configJsonObj);
 
                 var created = PackageCreator.CreateUnityPackage(Encoding.UTF8.GetBytes(configJson));
@@ -218,24 +283,21 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         }
 
 #region get / infer manifest info
-        private void LoadPackageInfos()
-        {
-        }
 
-
-        private static LoadedPackageInfo LoadPackageJsonRecursive([NotNull] TextAsset packageJsonAsset)
+        private void LoadPackageJsonRecursive([NotNull] TextAsset packageJsonAsset)
         {
             var rootPackageJson = LoadPackageJson(packageJsonAsset);
             if (rootPackageJson == null)
             {
-                return null;
+                warnings = new []{"Cannot read the package.json. The package.json is not valid."};
+                return;
             }
 
             var vrcPackages = VRChatPackageManager.VRChatPackages;
-            var foundReposByPackage = VRChatPackageManager.CollectUserRepoForPackage();
+            var (foundReposByPackage, foundReposByPackageName) = VRChatPackageManager.CollectUserRepoForPackage();
 
             var packagesWithoutRepository = new HashSet<string>();
-            var repositories = new HashSet<string>();
+            var repositoryUrls = new HashSet<string>();
 
             // will be asked
             var includedPackages = new HashSet<string>();
@@ -267,11 +329,15 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 }
                 else if (srcJson.Repo != null)
                 {
-                    repositories.Add(srcJson.Repo);
+                    repositoryUrls.Add(srcJson.Repo);
                 }
                 else if (foundReposByPackage.TryGetValue(new PackageInfo(srcJson), out var repo))
                 {
-                    repositories.Add(repo.Url);
+                    repositoryUrls.Add(repo.Url);
+                }
+                else if (foundReposByPackageName.TryGetValue(srcJson.Name, out repo))
+                {
+                    repositoryUrls.Add(repo.Url);
                 }
                 else
                 {
@@ -280,10 +346,18 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 }
             }
 
-            return new LoadedPackageInfo(
-                rootPackageJson: rootPackageJson,
-                repositories: repositories,
-                packagesWithoutRepository: packagesWithoutRepository);
+            packages = new[] { new GuiPackageInfo(rootPackageJson.Name, rootPackageJson.Version) };
+            repositories = repositoryUrls.Select(x => new GuiRepositoryInfo(x)).ToArray();
+
+            warnings = Array.Empty<string>();
+
+            if (packagesWithoutRepository.Count != 0)
+            {
+                var messageBuilder = new StringBuilder("Repository for the following packages not found: ");
+                foreach (var pkg in packagesWithoutRepository)
+                    messageBuilder.Append('\n').Append(pkg);
+                ArrayUtility.Add(ref warnings, messageBuilder.ToString());
+            }
         }
 
         [CanBeNull]
@@ -305,24 +379,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 
     }
 
-    internal class LoadedPackageInfo
-    {
-        public readonly PackageJson RootPackageJson;
-        public readonly HashSet<string> Repositories;
-        public readonly HashSet<string> PackagesWithoutRepository;
-
-        public LoadedPackageInfo(
-            PackageJson rootPackageJson,
-            HashSet<string> repositories,
-            HashSet<string> packagesWithoutRepository
-        )
-        {
-            RootPackageJson = rootPackageJson;
-            Repositories = repositories;
-            PackagesWithoutRepository = packagesWithoutRepository;
-        }
-    }
-
     internal static class VRChatPackageManager
     {
         public static string GlobalFoler = Path.Combine(
@@ -342,7 +398,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
             from name in json.Repo.Packages.Keys
             select name);
 
-        public static Dictionary<PackageInfo, VpmUserRepo> CollectUserRepoForPackage()
+        public static (Dictionary<PackageInfo, VpmUserRepo>, Dictionary<string, VpmUserRepo>) CollectUserRepoForPackage()
         {
             var settings = JsonConvert.DeserializeObject<VpmGlobalSettingsJson>(File.ReadAllText(GlobalSettingPath));
             settings.UserRepos.Reverse();
@@ -355,10 +411,16 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
                 let package = kvp.Key
                 from version in kvp.Value.Packages.Keys
                 select (pkg: new PackageInfo(package, version), userRepoInfo);
-            var mapping = new Dictionary<PackageInfo, VpmUserRepo>();
+            var byInfo = new Dictionary<PackageInfo, VpmUserRepo>();
+            var byName = new Dictionary<string, VpmUserRepo>();
             foreach (var (pkg, userRepoInfo) in enumerable)
-                mapping[pkg] = userRepoInfo;
-            return mapping;
+            {
+                if (!byInfo.ContainsKey(pkg))
+                    byInfo.Add(pkg, userRepoInfo);
+                if (!byName.ContainsKey(pkg.Id))
+                    byName.Add(pkg.Id, userRepoInfo);
+            }
+            return (byInfo, byName);
         }
 
         private static string TryReadAllText(string path)
@@ -594,7 +656,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         // ReSharper disable once NotAccessedField.Global
         public Dictionary<string, string> Dependencies;
         [JsonProperty("repositories")]
-        [JsonConverter(typeof(ConfigRepositoryInfo.JsonConverter))]
         // ReSharper disable once NotAccessedField.Global
         public List<ConfigRepositoryInfo> Repositories;
 
@@ -608,6 +669,7 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         }
     }
 
+    [JsonConverter(typeof(JsonConverter))]
     internal class ConfigRepositoryInfo
     {
         // ReSharper disable once NotAccessedField.Global
@@ -622,6 +684,8 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         }
 
         public ConfigRepositoryInfo(string url) => Url = url;
+
+        public ConfigRepositoryInfo(string url, Dictionary<string, string> headers) => (Url, Headers) = (url, headers);
 
         public class JsonConverter : JsonConverter<ConfigRepositoryInfo>
         {
