@@ -55,78 +55,6 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
         {
             public string url;
             public HeaderInfo[] headers;
-
-            [CustomPropertyDrawer(typeof(GuiRepositoryInfo))]
-            class EditorImpl : PropertyDrawer
-            {
-                public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-                {
-                    var height = 0f;
-                    // global header
-                    height += EditorGUIUtility.singleLineHeight;
-                    // url
-                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
-                    // headers header
-                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
-                    // headers
-                    height += (EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight) *
-                              property.FindPropertyRelative(nameof(headers)).arraySize;
-                    // add header
-                    height += EditorGUIUtility.standardVerticalSpacing + EditorGUIUtility.singleLineHeight;
-                    return height;
-                }
-
-                public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-                {
-                    position.height = EditorGUIUtility.singleLineHeight;
-                    property.isExpanded = EditorGUI.Foldout(position, property.isExpanded, label);
-                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                    if (!property.isExpanded) return;
-
-                    EditorGUI.indentLevel++;
-                    EditorGUI.PropertyField(position, property.FindPropertyRelative(nameof(url)));
-                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                    
-                    GUI.Label(EditorGUI.IndentedRect(position), "Headers");
-                    position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-
-                    {
-                        var headersProp = property.FindPropertyRelative(nameof(headers));
-                        var indentLevelOld = EditorGUI.indentLevel;
-                        var indent = EditorGUI.indentLevel * 15f;
-                        var buttonWidth = EditorGUIUtility.singleLineHeight;
-                        var labelWidth = (position.width - indent - 2.0f - 2.0f - buttonWidth) / 2;
-                        var labelRect = new Rect(position.x + indent, position.y, labelWidth, 18);
-                        var valueRect = new Rect(position.x + labelWidth + indent + 2.0f, position.y,
-                            position.width - labelWidth - indent - 2.0f - 2.0f - buttonWidth, position.height);
-                        var buttonRect = new Rect(position.xMax - 2.0f - buttonWidth, position.y, buttonWidth, 18);
-
-                        EditorGUI.indentLevel = 0;
-                        for (var i = 0; i < headersProp.arraySize; i++)
-                        {
-                            var element = headersProp.GetArrayElementAtIndex(i);
-                            var name = element.FindPropertyRelative(nameof(HeaderInfo.name));
-                            var value = element.FindPropertyRelative(nameof(HeaderInfo.value));
-
-                            name.stringValue = EditorGUI.TextField(labelRect, name.stringValue);
-                            value.stringValue = EditorGUI.TextField(valueRect, value.stringValue);
-                            if (GUI.Button(buttonRect, "x"))
-                                headersProp.DeleteArrayElementAtIndex(i);
-
-                            labelRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                            valueRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                            buttonRect.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                            position.y += EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-                        }
-                        EditorGUI.indentLevel = indentLevelOld;
-
-                        if (GUI.Button(EditorGUI.IndentedRect(position), "Add Header"))
-                            headersProp.arraySize++;
-                    }
-
-                    EditorGUI.indentLevel--;
-                }
-            }
         }
 
         [Serializable]
@@ -147,11 +75,106 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 
             _serialized.Update();
 
-            EditorGUILayout.PropertyField(_packages);
-            EditorGUILayout.PropertyField(_repositories);
+            EditorGUILayout.Space();
+
+            EditorGUILayout.LabelField("Packages", EditorStyles.boldLabel);
+            {
+                var (labelRect, valueRect, _) = SplitRectToTwoAndButton(EditorGUILayout.GetControlRect());
+                GUI.Label(labelRect, "Package Id");
+                GUI.Label(valueRect, "Package Version");
+            }
+            for (var i = 0; i < _packages.arraySize; i++)
+            {
+                var package = _packages.GetArrayElementAtIndex(i);
+                var packageId = package.FindPropertyRelative(nameof(GuiPackageInfo.id));
+                var packageVersion = package.FindPropertyRelative(nameof(GuiPackageInfo.version));
+
+                var (labelRect, valueRect, buttonRect) = SplitRectToTwoAndButton(EditorGUILayout.GetControlRect());
+                var indentLevelOld = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = 0;
+                EditorGUI.PropertyField(labelRect, packageId, GUIContent.none);
+                EditorGUI.PropertyField(valueRect, packageVersion, GUIContent.none);
+                if (GUI.Button(buttonRect, "x"))
+                    _packages.DeleteArrayElementAtIndex(i);
+                EditorGUI.indentLevel = indentLevelOld;
+            }
+            if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Add Package"))
+                _packages.arraySize++;
+
+            EditorGUILayout.Space();
+
+            EditorGUILayout.LabelField("Repositories", EditorStyles.boldLabel);
+            for (var i = 0; i < _repositories.arraySize; i++)
+                DrawRepository(_repositories.GetArrayElementAtIndex(i),
+                    () => _repositories.DeleteArrayElementAtIndex(i));
+            if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Add Repository"))
+                _repositories.arraySize++;
 
             _serialized.ApplyModifiedProperties();
 
+            EditorGUILayout.Space();
+
+            if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Create Installer UnityPackage"))
+            {
+                // TODO
+                CreateInstaller(null);
+            }
+        }
+
+        static (Rect, Rect, Rect) SplitRectToTwoAndButton(Rect position)
+        {
+            var indent = EditorGUI.indentLevel * 15f;
+            var buttonWidth = EditorGUIUtility.singleLineHeight;
+
+            var labelWidth = (position.width - indent - 2.0f - 2.0f - buttonWidth) / 2;
+            var labelRect = new Rect(position.x + indent, position.y, labelWidth, 18);
+            var valueRect = new Rect(position.x + labelWidth + indent + 2.0f, position.y,
+                position.width - labelWidth - indent - 2.0f - 2.0f - buttonWidth, position.height);
+            var buttonRect = new Rect(position.xMax - buttonWidth, position.y, buttonWidth, 18);
+
+            return (labelRect, valueRect, buttonRect);
+        }
+
+        private static void DrawRepository(SerializedProperty property, [CanBeNull] Action remove = null)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Remove This Repository"))
+            {
+                remove?.Invoke();
+                return;
+            }
+
+            EditorGUILayout.PropertyField(property.FindPropertyRelative(nameof(GuiRepositoryInfo.url)));
+
+            var headersProp = property.FindPropertyRelative(nameof(GuiRepositoryInfo.headers));
+            EditorGUILayout.LabelField("Headers", EditorStyles.boldLabel);
+
+            {
+                var (labelRect, valueRect, _) = SplitRectToTwoAndButton(EditorGUILayout.GetControlRect());
+                GUI.Label(labelRect, "Header Name");
+                GUI.Label(valueRect, "Value");
+            }
+
+            for (var i = 0; i < headersProp.arraySize; i++)
+            {
+                var element = headersProp.GetArrayElementAtIndex(i);
+                var name = element.FindPropertyRelative(nameof(HeaderInfo.name));
+                var value = element.FindPropertyRelative(nameof(HeaderInfo.value));
+
+                var (labelRect, valueRect, buttonRect) = SplitRectToTwoAndButton(EditorGUILayout.GetControlRect());
+                var indentLevelOld = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = 0;
+                EditorGUI.PropertyField(labelRect, name, GUIContent.none);
+                EditorGUI.PropertyField(valueRect, value, GUIContent.none);
+                if (GUI.Button(buttonRect, "x"))
+                    headersProp.DeleteArrayElementAtIndex(i);
+                EditorGUI.indentLevel = indentLevelOld;
+            }
+
+            if (GUI.Button(EditorGUI.IndentedRect(EditorGUILayout.GetControlRect()), "Add Header"))
+                headersProp.arraySize++;
+
+            EditorGUILayout.EndVertical();
         }
 
         private static void CreateInstaller([NotNull] LoadedPackageInfo loaded)
