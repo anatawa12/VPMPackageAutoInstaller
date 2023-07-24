@@ -11,19 +11,20 @@ a) インストーラを使用する場合
 
 b) VCCに追加する場合
   1. VCCを最新版に更新してください。
-  2. add-repo.urlを開いてください。VCCが起動します。
+  2. add-repo.urlファイルをを開いてください。VCCが起動します。
   3. VCCの指示に従いレポジトリを追加してください。
      もしレポジトリを追加済だとエラーになります。 (VCC 2.1.1時点)
   4. VCCからVPMPackageAutoInstaller Creatorを追加してください。
 
 使い方
-1. 上のツールバーからTools/VPMPackageAutoInstaller Creatorを選択してください
+1. 上のツールバーからTools/VPMPackageAutoInstaller Creatorを選択してください。
 2. パッケージの設定をします。
-  2.1. もじpackage.jsonがすでにあるのであればそれを`package.json`の欄に設定して"Load from package.json"を押してください
-  2.2. もしプロジェクトにpackage.jsonがなければexample.pngを参考に手動設定してください。
-       Package Version Rangeの値に応じてインストーラがインストールするバージョンを調整できます。
-       vpmDependenciesで使用するのと同じバージョン範囲を使用できます
-       例えば `1.x.x` だとバージョン1.0.0(含む)から2.0.0(含まない)を、`1.2.x`だと1.2.0(含む)から1.3.0(含まない)のうち最新版をインストールします。
+  2.1. もしpackage.jsonがすでにあるのであれば、それを`package.json`の欄に設定して"Load from package.json"を押してください
+  2.2. package.jsonがなければ、example.pngを参考に手動で設定してください。
+       Package Version Rangeの範囲のうち最新版がインストールされます。
+       範囲の指定にはvpmDependenciesで使用するのと同じ、npmのバージョン範囲を使用できます。
+       例えば `x.x.x`だと全てのバージョンの、`1.x.x` だとバージョン1.0.0(含む)から2.0.0(含まない)の、
+       `1.2.x`だと1.2.0(含む)から1.3.0(含まない)のうち最新版をインストールします。
        また、`1.2.3`のようにすると`1.2.3`をインストールします。
 
 同梱物
