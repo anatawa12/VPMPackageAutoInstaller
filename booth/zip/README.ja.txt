@@ -19,7 +19,7 @@ b) VCCに追加する場合
 使い方
 1. 上のツールバーからTools/VPMPackageAutoInstaller Creatorを選択してください。
 2. パッケージの設定をします。
-  2.1. もしpackage.jsonがすでにあるのであれば、それを`package.json`の欄に設定して"Load from package.json"を押してください
+  2.1. もしpackage.jsonがすでにあるのであれば、それを`package.json`の欄に設定して"Load from package.json"を押してください。
   2.2. package.jsonがなければ、example.pngを参考に手動で設定してください。
        Package Version Rangeの範囲のうち最新版がインストールされます。
        範囲の指定にはvpmDependenciesで使用するのと同じ、npmのバージョン範囲を使用できます。
