@@ -674,10 +674,10 @@ namespace Anatawa12.VpmPackageAutoInstaller.Creator
 
     internal class CreatorConfigJson
     {
-        [JsonProperty("dependencies")]
+        [JsonProperty("vpmDependencies")]
         // ReSharper disable once NotAccessedField.Global
         public Dictionary<string, string> Dependencies;
-        [JsonProperty("repositories")]
+        [JsonProperty("vpmRepositories")]
         // ReSharper disable once NotAccessedField.Global
         public List<ConfigRepositoryInfo> Repositories;
 
