@@ -1,9 +1,12 @@
 VPMPackageAutoInstaller
 ===
 
-An experimental project to install [vpm] package published in non-official registry with unitypackage file.
+An project to install [vpm] package published in non-official registry with unitypackage file.
+
+This project is based on C# reimplementation of [vrc-get].
 
 [vpm]: https://vcc.docs.vrchat.com/vpm/packages
+[vrc-get]: https://github.com/anatawa12/vrc-get
 
 ## How to use
 
