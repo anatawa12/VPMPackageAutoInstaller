@@ -26,15 +26,20 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
+using Microsoft.Win32;
 using UnityEditor;
-using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 [assembly: InternalsVisibleTo("com.anatawa12.vpm-package-auto-installer.tester")]
 
@@ -96,9 +101,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
             LoadingGlobalSettingsJson,
             DownloadingRepositories,
             DownloadingNewRepositories,
+            AddRepositoryWithVcc,
             ResolvingDependencies,
             Prompting,
-            SavingRemoteRepositories,
             DownloadingAndExtractingPackages,
             SavingConfigChanges,
             RefreshingUnityPackageManger,
@@ -152,6 +157,8 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var config =
                 new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
+            var addRepositoryWithVcc = VccInvoker.IsValidVcsInstalled();
+
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
@@ -199,6 +206,47 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
+            if (addRepositoryWithVcc)
+            {
+                ShowProgress("Adding Repository with VCC", Progress.AddRepositoryWithVcc);
+
+                foreach (var (_, url, headers) in env.PendingRepositories)
+                {
+                    add_repository_again:
+                    VccInvoker.AddRepository(url, headers);
+                    switch (EditorUtility.DisplayDialogComplex("Needs Work on VCC",
+                                "The Package requires adding an repository to your VCC.\n" +
+                                "So, I've requested VCC to add the repository. \n" +
+                                "Please add the repository.",
+                                "OK, I've added repository",
+                                "Cancel Installation",
+                                "Open VCC Again"))
+                    {
+                        case 0:
+                            // OK, User says added so check if added
+                            var newEnv = await VrcGet.Environment.load_default(null);
+                            if (newEnv.get_user_repos().All(x => x.url != url))
+                            {
+                                if (EditorUtility.DisplayDialog("Confirm",
+                                        "It looks the Repository is not added. Open VCC Again to Add Repository?",
+                                        "Yes, Open VCC Again",
+                                        "No, I've installed repository"))
+                                {
+                                    goto add_repository_again;
+                                }
+                            }
+
+                            break;
+                        case 1:
+                            // Cancel
+                            return false;
+                        default:
+                            // Open VCC Again
+                            goto add_repository_again;
+                    }
+                }
+            }
+
             ShowProgress("Prompting to user...", Progress.Prompting);
             if (!IsNoPrompt())
             {
@@ -210,10 +258,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
                              .Distinct())
                     confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
 
-                if (env.PendingRepositories.Count != 0)
+                if (env.PendingRepositories.Count != 0 && !addRepositoryWithVcc)
                 {
                     confirmMessage.Append("\n\nThis will add following repositories:");
-                    foreach (var (_, url) in env.PendingRepositories)
+                    foreach (var (_, url, _) in env.PendingRepositories)
                         // ReSharper disable once PossibleNullReferenceException
                         confirmMessage.Append('\n').Append(url);
                 }
@@ -231,16 +279,17 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             // user confirm got. now, edit settings
 
-            ShowProgress("Saving remote repositories...", Progress.SavingRemoteRepositories);
-            await env.SavePendingRepositories();
-
             ShowProgress("Downloading & Extracting packages...", Progress.DownloadingAndExtractingPackages);
 
             await unityProject.do_add_package_request(env, request);
 
             ShowProgress("Saving config changes...", Progress.SavingConfigChanges);
             await unityProject.save();
-            await env.save();
+            if (!addRepositoryWithVcc)
+            {
+                await env.SavePendingRepositories();
+                await env.save();
+            }
 
             ShowProgress("Refreshing Unity Package Manager...", Progress.RefreshingUnityPackageManger);
             ResolveUnityPackageManger();
@@ -351,6 +400,84 @@ namespace Anatawa12.VpmPackageAutoInstaller
                               ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
                           ?? new Dictionary<string, string>();
             }
+        }
+    }
+
+    static class VccInvoker
+    {
+        private const string VccKeyName = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\VCC";
+        private const string VccInstallPathValueName = "InstallPath";
+        private const string VccVersionValueName = "Version";
+        private const string VccProtocolKeyName = "HKEY_CLASSES_ROOT\\vcc";
+        private const string UrlProtocolValueName = "URL Protocol";
+        private static bool? _isInstalled;
+
+        public static bool IsValidVcsInstalled() => _isInstalled ?? (_isInstalled = ComputeIsValidVcsInstalled()).Value;
+
+        private static bool ComputeIsValidVcsInstalled()
+        {
+            try
+            {
+                // on non windows, VCC is invalid
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    return false;
+
+                // not installed
+                if (!(Registry.GetValue(VccKeyName, VccInstallPathValueName, null) is string installPath)) return false;
+                if (!Directory.Exists(installPath)) return false;
+
+                // VCC is too old
+                if (!(Registry.GetValue(VccKeyName, VccVersionValueName, null) is string version)) return false;
+                if (!IsValidVersion(version)) return false;
+
+                // vcc protocol is not installed
+                if (Registry.GetValue(VccProtocolKeyName, UrlProtocolValueName, null) == null) return false;
+
+                // it looks
+                // - VCC is installed
+                // - VCC is 2.1.x or later
+                // - vcc: protocol is registered
+                // so I think VCC is installed.
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsValidVersion(string version)
+        {
+            if (version.Length == 0) return false;
+            // VCC 0.x.x does not support
+            if (version.StartsWith("0.", StringComparison.Ordinal)) return false;
+            // VCC 1.x.x does not support
+            if (version.StartsWith("1.", StringComparison.Ordinal)) return false;
+            // VCC 2.0.x does not support
+            if (version.StartsWith("2.0.", StringComparison.Ordinal)) return false;
+            // VCC 2.1.x or later does support
+            return true;
+        }
+
+        public static void AddRepository(string url, Dictionary<string, string> headers)
+        {
+            var queryString = new NameValueCollection { {"url", url} };
+            foreach (var (key, value) in headers)
+                queryString.Add("headers[]", $"{key}:{value}");
+
+            OpenUrl("vcc://vpm/add-repo" + ToQueryString(queryString));
+        }
+
+        private static Process OpenUrl(string url) =>
+            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+
+        private static string ToQueryString(this NameValueCollection nvc)
+        {
+            return "?" + string.Join("&",
+                from key in nvc.AllKeys
+                from value in nvc.GetValues(key)
+                select $"{WebUtility.UrlEncode(key)}={WebUtility.UrlEncode(value)}"
+            );
         }
     }
 }

@@ -25,7 +25,9 @@ namespace Anatawa12.VrcGet
         [NotNull] private readonly JsonObj settings;
         [NotNull] private readonly RepoHolder repo_cache;
         [NotNull] private readonly List<(string, PackageJson)> user_packages;
-        [NotNull] public readonly List<(string path, string url)> PendingRepositories = new List<(string, string)>(); // VPAI
+        [NotNull]
+        public readonly List<(string localPath, string, Dictionary<string, string> headers)> PendingRepositories =
+            new List<(string localPath, string, Dictionary<string, string> headers)>(); // VPAI
         private bool settings_changed;
 
         private Environment([CanBeNull] HttpClient http, [NotNull] string globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, List<(string, PackageJson)> userPackages, bool settingsChanged)
@@ -297,14 +299,14 @@ namespace Anatawa12.VrcGet
             }
             var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
             repo_cache.AddRepository(localPath, localCache);
-            PendingRepositories.Add((localPath, remote_repo.url()));
+            PendingRepositories.Add((localPath, remote_repo.url(), headers));
         }
 
         public async Task SavePendingRepositories()
         {
             for (var i = PendingRepositories.Count - 1; i >= 0; i--)
             {
-                var (localPath, _) = PendingRepositories[i];
+                var (localPath, _, _) = PendingRepositories[i];
                 PendingRepositories.RemoveAt(i);
 
                 var localCache = repo_cache.get_repo(localPath);
