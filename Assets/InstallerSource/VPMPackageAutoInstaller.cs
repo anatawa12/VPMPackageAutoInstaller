@@ -249,7 +249,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             return true;
         }
 
-        private static void ResolveUnityPackageManger()
+        internal static void ResolveUnityPackageManger()
         {
             var method = typeof(UnityEditor.PackageManager.Client).GetMethod(
                 name: "Resolve",
