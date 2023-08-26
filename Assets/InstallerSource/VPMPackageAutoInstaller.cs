@@ -253,7 +253,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         {
             System.Reflection.MethodInfo method = typeof(UnityEditor.PackageManager.Client).GetMethod("Resolve",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.DeclaredOnly);
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.DeclaredOnly);
             if (method != null)
                 method.Invoke(null, null);
         }
