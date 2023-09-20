@@ -206,7 +206,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
                 foreach (var (name, version) in 
                          request.locked().Select(x => (Name: x.name(), Version: x.version()))
-                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version)))
+                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version.as_single_version())))
                              .Distinct())
                     confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
 

@@ -15,12 +15,15 @@ namespace Anatawa12.VrcGet
 
     class VpmDependency
     {
-        public Version version { get; }
+        public DependencyRange version { get; }
 
         public VpmDependency([NotNull] Version version) =>
-            this.version = version ?? throw new ArgumentNullException(nameof(version));
+            this.version = new DependencyRange(version ?? throw new ArgumentNullException(nameof(version)));
 
-        public VpmDependency(JsonObj json) : this(Version.Parse(json.Get("version", JsonType.String)))
+        public VpmDependency([NotNull] DependencyRange version) =>
+            this.version = version;
+
+        public VpmDependency(JsonObj json) : this(DependencyRange.Parse(json.Get("version", JsonType.String)))
         {
         }
 
@@ -80,6 +83,7 @@ namespace Anatawa12.VrcGet
         [NotNull] public Dictionary<string, VersionRange> vpm_dependencies { get; }
         [NotNull] public Dictionary<string, string> legacy_folders { get; }
         [NotNull] public Dictionary<string, string> legacy_files { get; }
+        [NotNull] public string[] legacy_packages { get; }
 
         public PackageJson(JsonObj json)
         {
@@ -96,6 +100,9 @@ namespace Anatawa12.VrcGet
             legacy_files = Json.Get("legacyFiles", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => (string)x.Item2)
                               ?? new Dictionary<string, string>();
+            legacy_packages = Json.Get("legacyPackages", JsonType.List, true)
+                                  ?.Cast<string>().ToArray()
+                              ?? Array.Empty<string>();
         }
     }
 

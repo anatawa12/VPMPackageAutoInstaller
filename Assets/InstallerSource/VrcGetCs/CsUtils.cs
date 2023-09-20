@@ -31,6 +31,8 @@ namespace Anatawa12.VrcGet
         public bool matches(Version installed, bool includePrerelease) =>
             _range.IsSatisfied(installed, includePrerelease);
 
+        public bool match_pre(Version installed, bool includePrerelease) => matches(installed, includePrerelease);
+
         private bool Equals(VersionRange other) => _original == other._original;
 
         public override bool Equals(object obj) =>
@@ -44,10 +46,54 @@ namespace Anatawa12.VrcGet
         {
             return new VersionRange($">={depVersion}");
         }
+
+        public bool contains_pre() => ToString().Contains('-');
+    }
+
+    internal class DependencyRange
+    {
+        private VersionRange _original;
+
+        private DependencyRange(VersionRange version) => _original = version;
+        public DependencyRange(Version version) => _original = VersionRange.Parse(version.ToString());
+
+        public static DependencyRange Parse(string get) => new DependencyRange(VersionRange.Parse(get));
+        [CanBeNull]
+        public Version as_single_version() => Version.TryParse(_original.ToString(), out var parsed) ? parsed : null;
+        public bool matches(Version version)
+        {
+            if (as_single_version() is Version single)
+                return single <= version;
+            else
+                return _original.match_pre(version, true);
+        }
+        public VersionRange as_range() => as_single_version() is Version version ? VersionRange.same_or_later(version) : _original;
     }
 
     static class CsUtils
     {
+        public static TValue entry_or_default<TKey, TValue>(this Dictionary<TKey, TValue> self, TKey key) where TValue : new()
+        {
+            if (!self.TryGetValue(key, out var value))
+                self.Add(key, value = new TValue());
+            return value;
+        }
+
+        public static void insert<TKey, TValue>(this Dictionary<TKey, TValue> self, TKey key, TValue value) => self[key] = value;
+
+        public static void insert<T>(this HashSet<T> self, T value) => self.Add(value);
+
+        public static void push<T>(this List<T> self, T value) => self.Add(value);
+
+        public static T replace<T>(ref T place, T value)
+        {
+            var old = place;
+            place = value;
+            return old;
+        }
+
+        public static bool is_pre(this Version version) => version.IsPreRelease;
+
         public static async Task create_dir_all(string path)
         {
             await Task.Run(() => Directory.CreateDirectory(path));
@@ -89,6 +135,15 @@ namespace Anatawa12.VrcGet
                     self.Remove(current);
             }
         }
+
+        public static T? pop_back<T>(this LinkedList<T> self) where T : struct
+        {
+            var result = self.First?.Value;
+            if (result != null) self.RemoveFirst();
+            return result;
+        }
+
+        public static void push_back<T>(this LinkedList<T> self, T value) => self.AddLast(value);
 
         [CanBeNull]
         public static TValue get<TKey, TValue>(this IReadOnlyDictionary<TKey, TValue> self, TKey key)
