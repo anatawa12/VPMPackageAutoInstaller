@@ -206,7 +206,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
                 foreach (var (name, version) in 
                          request.locked().Select(x => (Name: x.name(), Version: x.version()))
-                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version)))
+                             .Concat(request.dependencies().Select(x => (Name: x.name, Version: x.dep.version.as_single_version())))
                              .Distinct())
                     confirmMessage.Append('\n').Append(name).Append(" version ").Append(version);
 
@@ -223,6 +223,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     confirmMessage.Append("\n\nYou're also deleting the following files/folders:");
                     foreach (var path in request.legacy_folders().Concat(request.legacy_files()))
                         confirmMessage.Append('\n').Append(path);
+                }
+
+                if (request.legacy_packages().Count != 0)
+                {
+                    confirmMessage.Append("\n\nYou're also deleting the following legacy Packages:");
+                    foreach (var name in request.legacy_packages())
+                        confirmMessage.Append("\n- ").Append(name);
                 }
 
                 if (!EditorUtility.DisplayDialog("Confirm", confirmMessage.ToString(), "Install", "Cancel"))

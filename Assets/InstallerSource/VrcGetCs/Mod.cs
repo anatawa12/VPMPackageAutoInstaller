@@ -344,6 +344,7 @@ namespace Anatawa12.VrcGet
         public string name()  => this.package_json().name;
         public Version version()  => this.package_json().version;
         public Dictionary<string, VersionRange> vpm_dependencies()  => this.package_json().vpm_dependencies;
+        public string[] legacy_packages()  => this.package_json().legacy_packages;
 
         // cs impl
         public bool is_remote() => _info is LocalCachedRepository;
@@ -580,6 +581,18 @@ namespace Anatawa12.VrcGet
             _changed = true;
         }
 
+        public void remove_packages(IEnumerable<string> names) {
+            foreach (var name in names) {
+                _locked.Remove(name);
+                if (_body.Get("locked", JsonType.Obj) is JsonObj locked)
+                    locked.Obj.RemoveAll(x => x.Item1 == name);
+                _dependencies.Remove(name);
+                if (_body.Get("dependencies", JsonType.Obj) is JsonObj dependencies)
+                    dependencies.Obj.RemoveAll(x => x.Item1 == name);
+            }
+            _changed = true;
+        }
+
         public async Task SaveTo(string file)
         {
             if (!_changed) return;
@@ -655,13 +668,17 @@ namespace Anatawa12.VrcGet
         PackageInfo[] _locked;
         string[] _legacyFiles;
         string[] _legacyFolders;
+        string[] _legacy_packages;
+        IReadOnlyDictionary<string, List<string>> _conflicts;
 
-        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, string[] legacy_files, string[] legacy_folders)
+        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, string[] legacy_files, string[] legacy_folders, string[] legacy_packages, Dictionary<string, List<string>> conflicts)
         {
             _dependencies = dependencies;
             _locked = locked;
             _legacyFiles = legacy_files;
             _legacyFolders = legacy_folders;
+            _legacy_packages = legacy_packages;
+            _conflicts = conflicts;
         }
         
         public IReadOnlyList<PackageInfo> locked() => _locked;
@@ -671,6 +688,10 @@ namespace Anatawa12.VrcGet
         public IReadOnlyList<string> legacy_files() => _legacyFiles;
 
         public IReadOnlyList<string> legacy_folders() => _legacyFolders;
+
+        public IReadOnlyList<string> legacy_packages() => _legacy_packages;
+
+        public IReadOnlyDictionary<string, List<string>> conflicts() => _conflicts;
     }
 
     sealed partial class UnityProject {
@@ -683,13 +704,13 @@ namespace Anatawa12.VrcGet
             packages.retain(pkg =>
             {
                 var dep = this.manifest.dependencies().get(pkg.name());
-                return dep == null || dep.version < pkg.version();
+                return dep == null || dep.version.matches(pkg.version());
             });
 
             // if same or newer requested package is in locked dependencies,
             // just add requested version into dependencies
             var dependencies = new List<(string, VpmDependency)>();
-            var locked = new List<PackageInfo>();
+            var adding_packages = new List<PackageInfo>();
 
             foreach (var request in packages)
             {
@@ -701,29 +722,35 @@ namespace Anatawa12.VrcGet
                 }
 
                 if (update) {
-                    locked.Add(request);
+                    adding_packages.Add(request);
                 }
             }
 
-            if (locked.len() == 0) {
+            if (adding_packages.len() == 0) {
                 // early return: 
                 return new AddPackageRequest(
                     dependencies: dependencies.ToArray(),
                     locked: Array.Empty<PackageInfo>(),
                     legacy_files: Array.Empty<string>(),
-                    legacy_folders: new string[0]
+                    legacy_folders: Array.Empty<string>(),
+                    legacy_packages: Array.Empty<string>(),
+                    conflicts: new Dictionary<string, List<string>>(0)
                 );
             }
 
-            var resolved = this.collect_adding_packages(env, locked, allow_prerelease);
+            var result = package_resolution.collect_adding_packages(manifest.dependencies(), manifest.locked(), env, adding_packages, allow_prerelease);
 
-            var (legacy_files, legacy_folders) = await this.collect_legacy_assets(resolved);
+            var legacy_packages = result.found_legacy_packages.Where(name => manifest.locked().ContainsKey(name)).ToArray();
+
+            var (legacy_files, legacy_folders) = await this.collect_legacy_assets(result.new_packages);
 
             return new AddPackageRequest( 
                 dependencies: dependencies.ToArray(), 
-                locked: resolved,
+                locked: result.new_packages,
+                conflicts: result.conflicts,
                 legacy_files: legacy_files,
-                legacy_folders: legacy_folders
+                legacy_folders: legacy_folders,
+                legacy_packages: legacy_packages
             );
         }
 
@@ -828,12 +855,19 @@ namespace Anatawa12.VrcGet
                 this.manifest.add_dependency(name, dep);
             }
 
-            // then, then, try to remove legacy assets
-            await Task.WhenAll(request.legacy_files().Select(remove_file)
-                .Concat(request.legacy_folders().Select(remove_folder)));
-
-            // finally, do install packages
+            // then, do install packages
             await this.do_add_packages_to_locked(env, request.locked());
+
+            //VPAI: skip project_dir since this runs under unity project
+            //var project_dir = this.project_dir;
+
+            // finally, try to remove legacy assets
+            manifest.remove_packages(request.legacy_packages());
+            await Task.WhenAll(
+                request.legacy_files().Select(remove_file)
+                    .Concat(request.legacy_folders().Select(remove_folder))
+                    .Concat(request.legacy_packages().Select(remove_package))
+            );
 
             async Task remove_meta_file(string base_path) {
                 try
@@ -869,6 +903,17 @@ namespace Anatawa12.VrcGet
                 }
                 await remove_meta_file(path);
             }
+            
+            async Task remove_package(string name) {
+                try
+                {
+                    await CsUtils.remove_dir_all($"Packages/{name}");
+                }
+                catch (IOException e)
+                {
+                    Debug.LogError($"removing legacy package at {name}: {e}");
+                }
+            }
         }
 
         private async Task do_add_packages_to_locked(Environment env, IReadOnlyList<PackageInfo> packages)
@@ -883,168 +928,6 @@ namespace Anatawa12.VrcGet
 
         // no remove: VPAI only does adding package
         // no mark_and_sweep
-
-
-        class DependencyInfo
-        {
-            public PackageInfo? @using;
-            [CanBeNull] public Version current;
-            // "" key for root dependencies
-            [NotNull] public readonly Dictionary<string, VersionRange> requirements;
-            [NotNull] public HashSet<string> dependencies;
-            public bool allow_pre;
-
-            public DependencyInfo()
-            {
-                @using = null;
-                current = null;
-                requirements = new Dictionary<string, VersionRange> {};
-                dependencies = new HashSet<string>();
-            }
-
-            public DependencyInfo(VersionRange range, bool allow_pre) : this()
-            {
-                requirements.Add("", range);
-                this.allow_pre = allow_pre;
-            }
-
-            public void add_range(string source, VersionRange range) {
-                requirements[source] = range;
-            }
-
-            public void remove_range(string source) {
-                requirements.Remove(source);
-            }
-
-            public void set_using_info(Version version, HashSet<string> dependencies) {
-                current = version;
-                this.allow_pre |= version.IsPreRelease;
-                this.dependencies = dependencies;
-            }
-
-            public HashSet<string> set_package(PackageInfo new_pkg) {
-                current = new_pkg.version();
-                var old = this.dependencies;
-                this.dependencies = new HashSet<string>(new_pkg.vpm_dependencies().Keys);
-                @using = new_pkg;
-
-                // using is save
-                return old;
-            }
-        }
-
-        PackageInfo[] collect_adding_packages(
-        Environment env,
-            IEnumerable<PackageInfo> packages,
-            bool allow_prerelease
-    ) {
-
-            var dependencies = new Dictionary<string, DependencyInfo>();
-
-            // first, add dependencies
-            // VPAI: we don't need root_dependencies
-            foreach (var (name, dep) in this.manifest.dependencies())
-            {
-                var min_var = dep.version;
-                var allow_pre = dep.version.IsPreRelease;
-
-                if (this.manifest.locked().TryGetValue(name, out var locked))
-                {
-                    allow_pre |= locked.version.IsPreRelease;
-                    if (locked.version < min_var)
-                        min_var = locked.version;
-                }
-
-                dependencies[name] = new DependencyInfo(VersionRange.same_or_later(min_var), allow_pre);
-            }
-
-            // VPAI
-            DependencyInfo GetOrPut(string pkg)
-            {
-                if (!dependencies.TryGetValue(pkg, out var dep))
-                    dependencies[pkg] = dep = new DependencyInfo();
-                return dep;
-            }
-
-            // then, add locked dependencies info
-            foreach (var (source, locked) in this.manifest.locked())
-            {
-                GetOrPut(source).set_using_info(locked.version, new HashSet<string>(locked.dependencies.Keys));
-
-                foreach (var (dependency, range) in locked.dependencies)
-                    GetOrPut(dependency).add_range(source, range);
-            }
-
-            var queue = new LinkedList<PackageInfo>(packages);
-
-            while (queue.Count != 0)
-            {
-                var x = queue.First.Value;
-                queue.RemoveFirst();
-                //log::debug!("processing package {} version {}", x.name(), x.version());
-                var name = x.name();
-                var vpm_dependencies = x.vpm_dependencies();
-                var old_dependencies = GetOrPut(name).set_package(x);
-
-                // remove previous dependencies if exists
-                foreach (var dep in old_dependencies) {
-                    dependencies[dep].remove_range(dep);
-                }
-
-                // add new dependencies
-                foreach (var (dependency, range) in vpm_dependencies)
-                {
-                    //log::debug!("processing package {name}: dependency {dependency} version {range}");
-                    var entry = GetOrPut(dependency);
-                    var install = true;
-                    var allow_prerelease1 = entry.allow_pre || allow_prerelease;
-
-                    if (queue.Any(y => y.name() == dependency && range.matches(y.version(), allow_prerelease1))) {
-                        // if installing version is good, no need to reinstall
-                        install = false;
-                        //log::debug!("processing package {name}: dependency {dependency} version {range}: pending matches");
-                    } else {
-                        // if already installed version is good, no need to reinstall
-                        
-                        if (entry.current is Version version) {
-                            if (range.matches(version, allow_prerelease1)) {
-                                //log::debug!("processing package {name}: dependency {dependency} version {range}: existing matches");
-                                install = false;
-                            }
-                        }
-                    }
-
-                    entry.add_range(name, range);
-
-                    if (install) {
-                        var found = env.find_package_by_name(dependency, range.matches);
-                        if (found == null)
-                            throw new VrcGetException($"dependency not found: {dependency}");
-
-                        // remove existing if existing
-                        queue.retain( y => y.name() != dependency);
-                        queue.AddLast(found.Value);
-                    }
-                }
-            }
-
-            // finally, check for conflict.
-            foreach (var (name, info) in dependencies)
-            {
-                if (info.current == null) continue;
-                foreach (var (source, range) in info.requirements)
-                {
-                    if (!range.matches(info.current, info.allow_pre || allow_prerelease)) {
-                        throw new VrcGetException($"Conflict with Dependencies: {name} conflicts with {source}");
-                    }
-                }
-            }
-
-            return dependencies
-                .Where(x => x.Value.@using != null)
-                .Select(x => x.Value.@using.Value)
-                .ToArray();
-        }
 
         public async Task save()
         {
