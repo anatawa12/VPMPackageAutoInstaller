@@ -50,14 +50,18 @@ namespace Anatawa12.VrcGet
         public bool contains_pre() => ToString().Contains('-');
     }
 
-    internal class DependencyRange
+    internal sealed class DependencyRange
     {
-        private VersionRange _original;
+        [NotNull] private readonly VersionRange _original;
 
-        private DependencyRange(VersionRange version) => _original = version;
+        private DependencyRange([NotNull] VersionRange version) => _original = version ?? throw new ArgumentNullException(nameof(version));
         public DependencyRange(Version version) => _original = VersionRange.Parse(version.ToString());
 
         public static DependencyRange Parse(string get) => new DependencyRange(VersionRange.Parse(get));
+        public override bool Equals(object obj) => ReferenceEquals(this, obj) || obj is DependencyRange other && _original.Equals(other._original);
+        public override int GetHashCode() => _original.GetHashCode();
+        public override string ToString() => _original.ToString();
+
         [CanBeNull]
         public Version as_single_version() => Version.TryParse(_original.ToString(), out var parsed) ? parsed : null;
         public bool matches(Version version)
