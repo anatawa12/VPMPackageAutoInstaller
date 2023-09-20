@@ -33,6 +33,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -325,13 +326,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
     sealed class VpaiConfig
     {
-        public readonly VpaiRepository[] vpmRepositories;
+        [NotNull] public readonly VpaiRepository[] vpmRepositories;
         public readonly bool includePrerelease;
-        public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
+        [NotNull] public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
 
         public VpaiConfig(JsonObj json)
         {
-            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Select(v => new VpaiRepository(v))?.ToArray();
+            vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Select(v => new VpaiRepository(v))?.ToArray() ?? Array.Empty<VpaiRepository>();
             includePrerelease = json.Get("includePrerelease", JsonType.Bool, true);
             VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))

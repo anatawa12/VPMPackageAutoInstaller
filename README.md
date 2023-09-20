@@ -12,6 +12,8 @@ This project is based on C# reimplementation of [vrc-get].
 
 ### Editor Plugin
 
+This tool is also available on [Booth](https://anatawa12.booth.pm/items/4951120)!
+
 1. download latest version of installer creator [here][download-creator-latest]
 2. Import the unitypackage to the unity project contains ``package.json``
 3. Open `VPMPackageAutoInstallerCreator` from Window menu
