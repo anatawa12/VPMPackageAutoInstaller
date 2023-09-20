@@ -225,6 +225,13 @@ namespace Anatawa12.VpmPackageAutoInstaller
                         confirmMessage.Append('\n').Append(path);
                 }
 
+                if (request.legacy_packages().Count != 0)
+                {
+                    confirmMessage.Append("\n\nYou're also deleting the following legacy Packages:");
+                    foreach (var name in request.legacy_packages())
+                        confirmMessage.Append("\n- ").Append(name);
+                }
+
                 if (!EditorUtility.DisplayDialog("Confirm", confirmMessage.ToString(), "Install", "Cancel"))
                     return false;
             }
