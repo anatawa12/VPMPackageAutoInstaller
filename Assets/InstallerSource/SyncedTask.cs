@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using JetBrains.Annotations;
 
@@ -12,7 +13,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         private IAsyncStateMachine _stateMachine;
         private bool _end = false;
         private TResult _result;
-        private Exception _exception;
+        private ExceptionDispatchInfo _exception;
         private SynchronizationContextImpl _contextImpl = new SynchronizationContextImpl();
 
         [UsedImplicitly] // async method builder
@@ -41,7 +42,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         [UsedImplicitly] // async method builder
         public void SetException(Exception exception)
         {
-            _exception = exception;
+            _exception = ExceptionDispatchInfo.Capture(exception);
             _contextImpl.Finish();
         }
 
@@ -91,8 +92,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         {
             _contextImpl.Execute();
 
-            if (_exception != null)
-                throw _exception;
+            _exception?.Throw();
             return _result;
         }
     }
