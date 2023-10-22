@@ -623,7 +623,7 @@ namespace Anatawa12.VrcGet
         public static async Task<UnityProject> find_unity_project([NotNull] string unityProject)
         {
             // removed find support
-            var unityFound = unityProject; //?? findUnityProjectPath();
+            var unityFound = unityProject + Path.DirectorySeparatorChar; //?? findUnityProjectPath();
             var packages = Path.Combine(unityFound, "Packages");
 
             var manifest = Path.Combine(unityFound, "Packages/vpm-manifest.json");
