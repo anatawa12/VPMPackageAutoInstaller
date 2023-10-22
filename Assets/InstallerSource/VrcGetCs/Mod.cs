@@ -623,7 +623,7 @@ namespace Anatawa12.VrcGet
         public static async Task<UnityProject> find_unity_project([NotNull] string unityProject)
         {
             // removed find support
-            var unityFound = unityProject; //?? findUnityProjectPath();
+            var unityFound = unityProject + Path.DirectorySeparatorChar; //?? findUnityProjectPath();
             var packages = Path.Combine(unityFound, "Packages");
 
             var manifest = Path.Combine(unityFound, "Packages/vpm-manifest.json");
@@ -881,6 +881,7 @@ namespace Anatawa12.VrcGet
             }
 
             async Task remove_file(string path) {
+                path = project_dir + path;
                 try
                 {
                     await CsUtils.remove_file(path);
@@ -893,6 +894,7 @@ namespace Anatawa12.VrcGet
             }
 
             async Task remove_folder(string path) {
+                path = project_dir + path;
                 try
                 {
                     await CsUtils.remove_dir_all(path);
