@@ -881,6 +881,7 @@ namespace Anatawa12.VrcGet
             }
 
             async Task remove_file(string path) {
+                path = project_dir + path;
                 try
                 {
                     await CsUtils.remove_file(path);
@@ -893,6 +894,7 @@ namespace Anatawa12.VrcGet
             }
 
             async Task remove_folder(string path) {
+                path = project_dir + path;
                 try
                 {
                     await CsUtils.remove_dir_all(path);
