@@ -112,13 +112,13 @@ namespace Anatawa12.VrcGet
 
     class UserRepoSetting
     {
-        [NotNull] public string local_path { get; set; }
+        [NotNull] public Path local_path { get; set; }
         [CanBeNull] public string name { get; set; }
         [CanBeNull] public string url { get; set; }
         [CanBeNull] public string id { get; set; }
         [NotNull] public Dictionary<string, string> headers { get; set; }
 
-        public UserRepoSetting([NotNull] string localPath, [CanBeNull] string name, [CanBeNull] string url, string id)
+        public UserRepoSetting([NotNull] Path localPath, [CanBeNull] string name, [CanBeNull] string url, string id)
         {
             local_path = localPath ?? throw new ArgumentNullException(nameof(localPath));
             this.name = name;
@@ -129,7 +129,7 @@ namespace Anatawa12.VrcGet
 
         public UserRepoSetting(JsonObj json)
         {
-            local_path = json.Get("localPath", JsonType.String);
+            local_path = new Path(json.Get("localPath", JsonType.String));
             name = json.Get("name", JsonType.String, true);
             url = json.Get("url", JsonType.String, true);
             id = json.Get("id", JsonType.String, true);
@@ -139,7 +139,7 @@ namespace Anatawa12.VrcGet
         public JsonObj ToJson()
         {
             var result =  new JsonObj();
-            result.Add("localPath", local_path);
+            result.Add("localPath", local_path.AsString);
             if (name != null) result.Add("name", name);
             if (url != null) result.Add("url", url);
             if (id != null) result.Add("id", id);

@@ -160,7 +160,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Loading Packages/vpm-manifest.json...", Progress.LoadingVpmManifestJson);
             var env = await VrcGet.Environment.load_default(client);
             ShowProgress("Loading settings.json...", Progress.LoadingGlobalSettingsJson);
-            var unityProject = await VrcGet.UnityProject.find_unity_project(Directory.GetCurrentDirectory());
+            var unityProject = await VrcGet.UnityProject.find_unity_project(new VrcGet.Path(Directory.GetCurrentDirectory()));
             ShowProgress("Downloading package information...", Progress.DownloadingRepositories);
             await env.load_package_infos(true);
 

@@ -16,11 +16,11 @@ namespace Anatawa12.VrcGet
     class RepoHolder
     {
         // the pointer of LocalCachedRepository will never be changed
-        [NotNull] readonly Dictionary<string, LocalCachedRepository> cached_repos_new;
+        [NotNull] readonly Dictionary<Path, LocalCachedRepository> cached_repos_new;
 
         public RepoHolder()
         {
-            cached_repos_new = new Dictionary<string, LocalCachedRepository>();
+            cached_repos_new = new Dictionary<Path, LocalCachedRepository>();
         }
 
         internal async Task load_repos([CanBeNull] HttpClient http, [NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
@@ -72,7 +72,7 @@ namespace Anatawa12.VrcGet
         static async Task<LocalCachedRepository> load_remote_repo(
             [CanBeNull] HttpClient client,
             [CanBeNull] Dictionary<String, String> headers,
-            [NotNull] string path,
+            [NotNull] Path path,
             [NotNull] string remote_url
         )
         {
@@ -109,14 +109,14 @@ namespace Anatawa12.VrcGet
 
         static async Task<LocalCachedRepository> load_local_repo(
             [CanBeNull] HttpClient client,
-            [NotNull] string path
+            [NotNull] Path path
         )
         {
             return await load_repo(path, client, () => throw new IOException("repository not found"));
         }
 
         static async Task<LocalCachedRepository> load_repo(
-            [NotNull] string path,
+            [NotNull] Path path,
             [CanBeNull] HttpClient http,
             Func<Task<LocalCachedRepository>> if_not_found
         )
@@ -142,19 +142,19 @@ namespace Anatawa12.VrcGet
 
         public LocalCachedRepository[] get_repos() => cached_repos_new.Values.ToArray();
 
-        public IEnumerable<(string, LocalCachedRepository)> get_repo_with_path() =>
+        public IEnumerable<(Path, LocalCachedRepository)> get_repo_with_path() =>
             cached_repos_new.Select(x => (x.Key, x.Value));
 
         [CanBeNull]
-        internal LocalCachedRepository get_repo(string path) => cached_repos_new.get(path);
+        internal LocalCachedRepository get_repo(Path path) => cached_repos_new.get(path);
 
         // VPAI: to add pending repo
-        public void AddRepository(string path, LocalCachedRepository cache)
+        public void AddRepository(Path path, LocalCachedRepository cache)
         {
             cached_repos_new.Add(path, cache);
         }
 
-        public void remove_repo(string path)
+        public void remove_repo(Path path)
         {
             cached_repos_new.Remove(path);
         }

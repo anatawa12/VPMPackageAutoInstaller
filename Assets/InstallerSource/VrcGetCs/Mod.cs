@@ -13,6 +13,7 @@ using Anatawa12.SimpleJson;
 using JetBrains.Annotations;
 using UnityEngine;
 using static Anatawa12.VrcGet.ModStatics;
+using static Anatawa12.VrcGet.CsUtils;
 using Version = SemanticVersioning.Version;
 // ReSharper disable ParameterHidesMember
 
@@ -21,14 +22,14 @@ namespace Anatawa12.VrcGet
     sealed partial class Environment
     {
         [CanBeNull] private readonly HttpClient http;
-        [NotNull] private readonly string global_dir;
+        [NotNull] private readonly Path global_dir;
         [NotNull] private readonly JsonObj settings;
         [NotNull] private readonly RepoHolder repo_cache;
-        [NotNull] private readonly List<(string, PackageJson)> user_packages;
-        [NotNull] public readonly List<(string path, string url)> PendingRepositories = new List<(string, string)>(); // VPAI
+        [NotNull] private readonly List<(Path, PackageJson)> user_packages;
+        [NotNull] public readonly List<(Path path, string url)> PendingRepositories = new List<(Path, string)>(); // VPAI
         private bool settings_changed;
 
-        private Environment([CanBeNull] HttpClient http, [NotNull] string globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, List<(string, PackageJson)> userPackages, bool settingsChanged)
+        private Environment([CanBeNull] HttpClient http, [NotNull] Path globalDir, [NotNull] JsonObj settings, [NotNull] RepoHolder repoCache, List<(Path, PackageJson)> userPackages, bool settingsChanged)
         {
             this.http = http;
             global_dir = globalDir;
@@ -41,18 +42,18 @@ namespace Anatawa12.VrcGet
         public static async Task<Environment> load_default(HttpClient http)
         {
             // for macOS, might be changed in .NET 7
-            var folder = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-            folder = Path.Combine(folder, "VRChatCreatorCompanion");
+            var folder = new Path(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData));
+            folder = folder.join("VRChatCreatorCompanion");
 
             //Debug.Log($"initializing Environment with config folder {folder}");
 
             return new Environment
             (
                 http: http,
-                settings: await load_json_or_default(Path.Combine(folder, "settings.json"), x => x),
+                settings: await load_json_or_default(folder.join("settings.json"), x => x),
                 globalDir: folder,
                 repoCache: new RepoHolder(),
-                userPackages: new List<(string, PackageJson)>(),
+                userPackages: new List<(Path, PackageJson)>(),
                 settingsChanged: false
             );
         }
@@ -125,7 +126,7 @@ namespace Anatawa12.VrcGet
             self.user_packages.Clear();
             foreach (var x in self.get_user_package_folders())
             {
-                var package_json = await load_json_or_else(Path.Combine(x, "package.json"), y => new PackageJson(y),
+                var package_json = await load_json_or_else(x.join("package.json"), y => new PackageJson(y),
                     () => null);
                 if (package_json != null)
                 {
@@ -136,7 +137,7 @@ namespace Anatawa12.VrcGet
 
 
         [NotNull]
-        public string get_repos_dir() => Path.Combine(global_dir, "Repos");
+        public Path get_repos_dir() => global_dir.join("Repos");
 
         public PackageInfo? find_package_by_name([NotNull] string package, VersionSelector version)
         {
@@ -152,7 +153,7 @@ namespace Anatawa12.VrcGet
         public List<RepoSource> get_repo_sources()
         {
             var definedSources = PreDefinedRepoSource.Sources.Select(x =>
-                new PreDefinedRepoSource(x, Path.Combine(this.get_repos_dir(), x.file_name)));
+                new PreDefinedRepoSource(x, this.get_repos_dir().joined(x.file_name)));
             var userRepoSources = get_user_repos().Select(x => new UserRepoSource(x));
 
             return definedSources.Concat<RepoSource>(userRepoSources).ToList();
@@ -162,7 +163,7 @@ namespace Anatawa12.VrcGet
         public LocalCachedRepository[] get_repos() => repo_cache.get_repos();
 
         [ItemNotNull]
-        public IEnumerable<(string, LocalCachedRepository)> get_repo_with_path() => repo_cache.get_repo_with_path();
+        public IEnumerable<(Path, LocalCachedRepository)> get_repo_with_path() => repo_cache.get_repo_with_path();
 
 
         [ItemNotNull]
@@ -218,7 +219,7 @@ namespace Anatawa12.VrcGet
             return list.DistinctBy(x => (Name: x.name, Version: x.version)).ToList();
         }
 
-        public async Task add_package([NotNull] PackageInfo package, [NotNull] string target_packages_folder)
+        public async Task add_package([NotNull] PackageInfo package, [NotNull] Path target_packages_folder)
         {
             await AddPackage.add_package(this.global_dir, this.http, package, target_packages_folder);
         }
@@ -234,8 +235,11 @@ namespace Anatawa12.VrcGet
 
         [ItemNotNull]
         [NotNull]
-        List<string> get_user_package_folders() =>
-            settings.Get("userPackageFolders", JsonType.List, true)?.Cast<string>()?.ToList() ?? new List<string>();
+        List<Path> get_user_package_folders() =>
+            settings.Get("userPackageFolders", JsonType.List, true)
+                ?.Cast<string>()
+                .Select(x => new Path(x))
+                ?.ToList() ?? new List<Path>();
 
         void add_user_repo([NotNull] UserRepoSetting repo)
         {
@@ -255,7 +259,7 @@ namespace Anatawa12.VrcGet
             var response = await download_remote_repository(http, url, headers, null);
             Debug.Assert(response != null, nameof(response) + " != null");
             var (remote_repo, etag) = response.Value;
-            var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
+            var localPath = get_repos_dir().joined($"{Guid.NewGuid()}.json");
 
             var repo_name = name ?? remote_repo.name();
             var repo_id = remote_repo.id();
@@ -295,7 +299,7 @@ namespace Anatawa12.VrcGet
                     localCache.vrc_get = new VrcGetMeta();
                 localCache.vrc_get.etag = etag;
             }
-            var localPath = Path.Combine(get_repos_dir(), $"{Guid.NewGuid()}.json");
+            var localPath = get_repos_dir().join($"{Guid.NewGuid()}.json");
             repo_cache.AddRepository(localPath, localCache);
             PendingRepositories.Add((localPath, remote_repo.url()));
         }
@@ -316,7 +320,7 @@ namespace Anatawa12.VrcGet
 
         #endregion
 
-        public void add_local_repo([NotNull] string path, [CanBeNull] string name)
+        public void add_local_repo([NotNull] Path path, [CanBeNull] string name)
         {
             if (get_user_repos().Any(x => x.local_path == path))
                 throw new VrcGetException("Already Added");
@@ -339,7 +343,7 @@ namespace Anatawa12.VrcGet
         [NotNull] public PackageJson package_json() => _packageJson;
 
         public static PackageInfo remote(PackageJson json, LocalCachedRepository repo) => new PackageInfo(json, repo);
-        public static PackageInfo local(PackageJson json, string path) => new PackageInfo(json, path);
+        public static PackageInfo local(PackageJson json, Path path) => new PackageInfo(json, path);
 
         public string name()  => this.package_json().name;
         public Version version()  => this.package_json().version;
@@ -349,21 +353,21 @@ namespace Anatawa12.VrcGet
         // cs impl
         public bool is_remote() => _info is LocalCachedRepository;
         public LocalCachedRepository remote() => (LocalCachedRepository)_info;
-        public string local() => (string)_info;
+        public Path local() => (Path)_info;
     }
 
     interface RepoSource
     {
         Task<LocalCachedRepository> VisitLoadRepo([CanBeNull] HttpClient client);
-        string file_path();
+        Path file_path();
     }
 
     class PreDefinedRepoSource : RepoSource
     {
         public Information Info { get; }
-        public string path { get; }
+        public Path path { get; }
 
-        public PreDefinedRepoSource(Information info, string path)
+        public PreDefinedRepoSource(Information info, Path path)
         {
             Info = info;
             this.path = path;
@@ -371,7 +375,7 @@ namespace Anatawa12.VrcGet
 
         public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadPreDefinedRepo(client, this);
 
-        public string file_path() => path;
+        public Path file_path() => path;
 
         public readonly struct Information
         {
@@ -411,12 +415,12 @@ namespace Anatawa12.VrcGet
 
         public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUserRepo(client, this);
 
-        public string file_path() => Setting.local_path;
+        public Path file_path() => Setting.local_path;
     }
 
     static partial class ModStatics
     {
-        public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] string path,
+        public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] Path path,
             [NotNull] LocalCachedRepository repo)
         {
             var remoteURL = repo.url();
@@ -464,15 +468,12 @@ namespace Anatawa12.VrcGet
             }
         }
 
-        public static async Task write_repo([NotNull] string path, [NotNull] LocalCachedRepository repo)
+        public static async Task write_repo([NotNull] Path path, [NotNull] LocalCachedRepository repo)
         {
-            await Task.Run(() =>
-            {
-                var dir = Path.GetDirectoryName(path);
-                Debug.Assert(dir != null, nameof(dir) + " != null");
-                Directory.CreateDirectory(dir);
-                File.WriteAllText(path, JsonWriter.Write(repo.ToJson()));
-            });
+            var dir = path.parent();
+            Debug.Assert(dir != null, nameof(dir) + " != null");
+            await create_dir_all(dir);
+            await WriteAllText(path, JsonWriter.Write(repo.ToJson()));
         }
 
         public static async Task<(Repository, string)?> download_remote_repository(
@@ -508,34 +509,31 @@ namespace Anatawa12.VrcGet
     }
 
     partial class Environment {
-        public Task<bool> remove_repo(Func<UserRepoSetting, bool> condition)
+        public async Task<bool> remove_repo(Func<UserRepoSetting, bool> condition)
         {
             var removes = get_user_repos()
                 .Select((x, i) => (x, i))
                 .Where(x => condition(x.x))
                 .ToList();
             removes.Reverse();
-            if (removes.Count == 0) return Task.FromResult(false);
+            if (removes.Count == 0) return false;
 
             var userRepos = settings.Get("userRepos", JsonType.List);
             for (var i = 0; i < removes.Count; i++)
                 userRepos.RemoveAt(removes[i].i);
 
             foreach (var (x, _) in removes)
-                File.Delete(x.local_path);
-            return Task.FromResult(true);
+                await remove_file(x.local_path);
+            return true;
         }
 
         public async Task save()
         {
             if (!settings_changed) return;
 
-            await Task.Run(() =>
-            {
-                Directory.CreateDirectory(global_dir);
-                File.WriteAllText(Path.Combine(global_dir, "settings.json"), JsonWriter.Write(settings));
-                settings_changed = false;
-            });
+            await create_dir_all(global_dir);
+            await WriteAllText(global_dir.join("settings.json"), JsonWriter.Write(settings));
+            settings_changed = false;
         }
     }
 
@@ -593,10 +591,10 @@ namespace Anatawa12.VrcGet
             _changed = true;
         }
 
-        public async Task SaveTo(string file)
+        public async Task SaveTo(Path file)
         {
             if (!_changed) return;
-            await Task.Run(() => { File.WriteAllText(file, JsonWriter.Write(_body)); });
+            await WriteAllText(file, JsonWriter.Write(_body));
             _changed = false;
         }
 
@@ -607,12 +605,12 @@ namespace Anatawa12.VrcGet
 
     sealed partial class UnityProject
     {
-        private readonly string project_dir;
+        private readonly Path project_dir;
         public readonly VpmManifest manifest; // VPAI: public
         private readonly List<(string dirName, PackageJson manifest)> unlocked_packages;
         private readonly Dictionary<string, PackageJson> installed_packages;
 
-        private UnityProject(string project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages, Dictionary<string, PackageJson> installed_packages)
+        private UnityProject(Path project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages, Dictionary<string, PackageJson> installed_packages)
         {
             this.project_dir = project_dir;
             this.manifest = manifest;
@@ -620,21 +618,21 @@ namespace Anatawa12.VrcGet
             this.installed_packages = installed_packages;
         }
 
-        public static async Task<UnityProject> find_unity_project([NotNull] string unityProject)
+        public static async Task<UnityProject> find_unity_project([NotNull] Path unityProject)
         {
             // removed find support
-            var unityFound = unityProject + Path.DirectorySeparatorChar; //?? findUnityProjectPath();
-            var packages = Path.Combine(unityFound, "Packages");
+            var unityFound = unityProject; //?? findUnityProjectPath();
 
-            var manifest = Path.Combine(unityFound, "Packages/vpm-manifest.json");
+            var manifest = unityFound.join("Packages").joined("vpm-manifest.json");
             var vpmManifest = new VpmManifest(await load_json_or_default(manifest, x => x));
 
             var installed_packages = new Dictionary<string, PackageJson>();
             var unlockedPackages = new List<(string, PackageJson)>();
 
-            foreach (var dir in await Task.Run(() => Directory.GetDirectories(packages)))
+            var packages = unityFound.join("Packages");
+            foreach (var dir in await Task.Run(() => Directory.GetDirectories(packages.AsString)))
             {
-                var read = await try_read_unlocked_package(dir, Path.Combine(packages, dir), vpmManifest);
+                var read = await try_read_unlocked_package(dir, packages.join(dir));
                 var is_installed = false;
                 if (read.Item2 is PackageJson parsed)
                 {
@@ -651,10 +649,9 @@ namespace Anatawa12.VrcGet
             return new UnityProject(unityFound, vpmManifest, unlockedPackages, installed_packages);
         }
 
-        private static async Task<(string, PackageJson)> try_read_unlocked_package(string name, string path,
-            VpmManifest vpmManifest)
+        private static async Task<(string, PackageJson)> try_read_unlocked_package(string name, Path path)
         {
-            var packageJsonPath = Path.Combine(path, "package.json");
+            var packageJsonPath = path.join("package.json");
             var parsed = await load_json_or_else(packageJsonPath, x => new PackageJson(x), () => null);
             return (name, parsed);
         }
@@ -666,12 +663,12 @@ namespace Anatawa12.VrcGet
     {
         (string, VpmDependency)[] _dependencies;
         PackageInfo[] _locked;
-        string[] _legacyFiles;
-        string[] _legacyFolders;
+        Path[] _legacyFiles;
+        Path[] _legacyFolders;
         string[] _legacy_packages;
         IReadOnlyDictionary<string, List<string>> _conflicts;
 
-        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, string[] legacy_files, string[] legacy_folders, string[] legacy_packages, Dictionary<string, List<string>> conflicts)
+        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, Path[] legacy_files, Path[] legacy_folders, string[] legacy_packages, Dictionary<string, List<string>> conflicts)
         {
             _dependencies = dependencies;
             _locked = locked;
@@ -685,9 +682,9 @@ namespace Anatawa12.VrcGet
 
         public IReadOnlyList<(string name, VpmDependency dep)> dependencies() => _dependencies;
 
-        public IReadOnlyList<string> legacy_files() => _legacyFiles;
+        public IReadOnlyList<Path> legacy_files() => _legacyFiles;
 
-        public IReadOnlyList<string> legacy_folders() => _legacyFolders;
+        public IReadOnlyList<Path> legacy_folders() => _legacyFolders;
 
         public IReadOnlyList<string> legacy_packages() => _legacy_packages;
 
@@ -731,8 +728,8 @@ namespace Anatawa12.VrcGet
                 return new AddPackageRequest(
                     dependencies: dependencies.ToArray(),
                     locked: Array.Empty<PackageInfo>(),
-                    legacy_files: Array.Empty<string>(),
-                    legacy_folders: Array.Empty<string>(),
+                    legacy_files: Array.Empty<Path>(),
+                    legacy_folders: Array.Empty<Path>(),
                     legacy_packages: Array.Empty<string>(),
                     conflicts: new Dictionary<string, List<string>>(0)
                 );
@@ -753,17 +750,41 @@ namespace Anatawa12.VrcGet
                 legacy_packages: legacy_packages
             );
         }
+    }
 
-    async Task<(string[], string[])> collect_legacy_assets(IReadOnlyCollection<PackageInfo> packages)  {
+    readonly struct LegacyInfo
+    {
+        public const int KindNotFound = 0;
+        public const int KindFoundFile = 2;
+        public const int KindFoundFolder = 3;
+        public const int KindGuidFile = 4;
+        public const int KindGuidFolder = 5;
+        private readonly int _kind;
+        private readonly object _value;
+
+        public int Kind => _kind;
+        public string GUID => (string)_value;
+        public Path Path => (Path)_value;
+
+        public static LegacyInfo NotFound = new LegacyInfo(KindNotFound, null);
+        public static LegacyInfo FoundFile(Path path) => new LegacyInfo(KindFoundFile, path);
+        public static LegacyInfo FoundFolder(Path path) => new LegacyInfo(KindFoundFolder, path);
+        public static LegacyInfo GuidFile(string guid) => new LegacyInfo(KindGuidFile, guid);
+        public static LegacyInfo GuidFolder(string guid) => new LegacyInfo(KindGuidFolder, guid);
+
+        private LegacyInfo(int kind, object value)
+        {
+            _kind = kind;
+            _value = value;
+        }
+    }
+
+    sealed partial class UnityProject {
+
+    async Task<(Path[], Path[])> collect_legacy_assets(IReadOnlyCollection<PackageInfo> packages)  {
         var folders = packages.SelectMany(x => x.package_json().legacy_folders).Select(pair => (pair.Key, pair.Value, false));
         var files = packages.SelectMany(x => x.package_json().legacy_files).Select(pair => (pair.Key, pair.Value, true));
         var assets = new List<(string, string, bool)>(folders.Concat(files));
-
-        const int NotFound = 0;
-        const int FoundFile = 2;
-        const int FoundFolder = 3;
-        const int GuidFile = 4;
-        const int GuidFolder = 5;
 
         bool is_guid(string guid) =>
             guid != null && 
@@ -772,53 +793,53 @@ namespace Anatawa12.VrcGet
 
         var futures = assets.Select(async tuple =>
         {
-            var (path, guid, is_file) = tuple;
+            var (_, guid, is_file) = tuple;
             // some packages uses '/' as path separator.
-            path = path.Replace('\\', '/');
+            var path = new Path(tuple.Item1.Replace('\\', '/'));
             // for security, deny absolute path.
-            if (Path.IsPathRooted(path))
+            if (path.has_root())
             {
-                return (NotFound, null);
+                return LegacyInfo.NotFound;
             }
 
-            path = Path.Combine(this.project_dir, path);
-            var (file_exists, dir_exists) = await Task.Run(() => (File.Exists(path), Directory.Exists(path)));
+            path = this.project_dir.join(path);
+            var (file_exists, dir_exists) = await Task.Run(() => (File.Exists(path.AsString), Directory.Exists(path.AsString))); // VPAI: C# impl
             if (file_exists && is_file)
-                return (FoundFile, path);
+                return LegacyInfo.FoundFile(path);
             if (dir_exists && !is_file)
-                return (FoundFolder, path);
+                return LegacyInfo.FoundFolder(path);
 
             if (!is_guid(guid))
-                return (NotFound, null);
-            return is_file ? (GuidFile, guid) : (GuidFolder, guid);
+                return LegacyInfo.NotFound;
+            return is_file ? LegacyInfo.GuidFile(guid) : LegacyInfo.GuidFolder(guid);
         });
 
-        var found_files = new HashSet<string>();
-        var found_folders = new HashSet<string>();
+        var found_files = new HashSet<Path>();
+        var found_folders = new HashSet<Path>();
         var find_guids = new Dictionary<string, bool>();
 
-        foreach (var (state, value) in await Task.WhenAll(futures))
+        foreach (var info in await Task.WhenAll(futures))
         {
-            string path;
-            switch (state)
+            Path path;
+            switch (info.Kind)
             {
-                case NotFound:
+                case LegacyInfo.KindNotFound:
                     break;
-                case FoundFile:
-                    path = value.strip_prefix(project_dir);
+                case LegacyInfo.KindFoundFile:
+                    path = info.Path.strip_prefix(project_dir);
                     System.Diagnostics.Debug.Assert(path != null, "path != null");
                     found_files.Add(path);
                     break;
-                case FoundFolder:
-                    path = value.strip_prefix(project_dir);
+                case LegacyInfo.KindFoundFolder:
+                    path = info.Path.strip_prefix(project_dir);
                     System.Diagnostics.Debug.Assert(path != null, "path != null");
                     found_folders.Add(path);
                     break;
-                case GuidFile:
-                    find_guids[value] = true;
+                case LegacyInfo.KindGuidFile:
+                    find_guids[info.GUID] = true;
                     break;
-                case GuidFolder:
-                    find_guids[value] = false;
+                case LegacyInfo.KindGuidFolder:
+                    find_guids[info.GUID] = false;
                     break;
             }
         }
@@ -836,9 +857,9 @@ namespace Anatawa12.VrcGet
                 if (is_file_actual != is_file) continue;
 
                 if (is_file) {
-                    found_files.Add(path);
+                    found_files.Add(new Path(path));
                 } else {
-                    found_folders.Add(path);
+                    found_folders.Add(new Path(path));
                 }
             }
         }
@@ -869,10 +890,11 @@ namespace Anatawa12.VrcGet
                     .Concat(request.legacy_packages().Select(remove_package))
             );
 
-            async Task remove_meta_file(string base_path) {
+            async Task remove_meta_file(Path base_path) {
+                var meta = new Path(base_path.AsString + ".meta");
                 try
                 {
-                    await CsUtils.remove_file($"{base_path}.meta");
+                    await CsUtils.remove_file(meta);
                 }
                 catch (IOException e)
                 {
@@ -880,8 +902,8 @@ namespace Anatawa12.VrcGet
                 }
             }
 
-            async Task remove_file(string path) {
-                path = project_dir + path;
+            async Task remove_file(Path path) {
+                path = project_dir.join(path);
                 try
                 {
                     await CsUtils.remove_file(path);
@@ -893,11 +915,11 @@ namespace Anatawa12.VrcGet
                 await remove_meta_file(path);
             }
 
-            async Task remove_folder(string path) {
-                path = project_dir + path;
+            async Task remove_folder(Path path) {
+                path = project_dir.join(path);
                 try
                 {
-                    await CsUtils.remove_dir_all(path);
+                    await remove_dir_all(path);
                 }
                 catch (IOException e)
                 {
@@ -907,9 +929,10 @@ namespace Anatawa12.VrcGet
             }
             
             async Task remove_package(string name) {
+                var folder = project_dir.join("Packages").joined(name);
                 try
                 {
-                    await CsUtils.remove_dir_all($"Packages/{name}");
+                    await remove_dir_all(folder);
                 }
                 catch (IOException e)
                 {
@@ -923,7 +946,7 @@ namespace Anatawa12.VrcGet
             foreach (var pkg in packages)
                 manifest.add_locked(pkg.name(), new VpmLockedDependency(pkg.version(), pkg.vpm_dependencies()));
 
-            var packages_folder = Path.Combine(project_dir, "Packages");
+            var packages_folder = project_dir.join("Packages");
 
             await Task.WhenAll(packages.Select(x => env.add_package(x, packages_folder)));
         }
@@ -933,7 +956,7 @@ namespace Anatawa12.VrcGet
 
         public async Task save()
         {
-            await manifest.SaveTo(Path.Combine(project_dir, "Packages/vpm-manifest.json"));
+            await manifest.SaveTo(project_dir.join("Packages").joined("vpm-manifest.json"));
         }
         
         // no resolve: VPAI only does installing packages
@@ -979,11 +1002,11 @@ namespace Anatawa12.VrcGet
         }
 
         [ItemCanBeNull]
-        public static async Task<string> TryReadFile([NotNull] string path)
+        public static async Task<string> TryReadFile([NotNull] Path path)
         {
             try
             {
-                return await Task.Run(() => File.ReadAllText(path, Encoding.UTF8));
+                return await Task.Run(() => File.ReadAllText(path.ToString(), Encoding.UTF8));
             }
             catch (FileNotFoundException)
             {
@@ -995,7 +1018,7 @@ namespace Anatawa12.VrcGet
             }
         }
 
-        public static async Task<T> load_json_or_else<T>(string manifestPath, Func<JsonObj, T> parser, Func<T> @default)
+        public static async Task<T> load_json_or_else<T>(Path manifestPath, Func<JsonObj, T> parser, Func<T> @default)
         {
             var file = await TryReadFile(manifestPath);
             if (file == null) return @default();
@@ -1005,7 +1028,7 @@ namespace Anatawa12.VrcGet
             return parser(new JsonParser(file).Parse(JsonType.Obj));
         }
 
-        public static async Task<T> load_json_or_default<T>(string manifestPath, Func<JsonObj, T> parser) where T : new()
+        public static async Task<T> load_json_or_default<T>(Path manifestPath, Func<JsonObj, T> parser) where T : new()
         {
             return await load_json_or_else(manifestPath, parser, () => new T());
         }
