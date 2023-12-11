@@ -327,8 +327,8 @@ namespace Anatawa12.VrcGet
                         //log::debug!("processing package {name}: dependency {dependency} version {range}");
 
                         if (context.should_add_package(dependency, range)) {
-                            var found = env.find_package_by_name(dependency, PackageSelector.range_for(unity_version, range))
-                                ?? env.find_package_by_name(dependency, PackageSelector.range_for(null, range));
+                            var found = env.find_package_by_name(dependency, PackageSelector.range_for(unity_version, range));
+                            // VPAI: disallow unity incompatible versions to avoid breaking project ?? env.find_package_by_name(dependency, PackageSelector.range_for(null, range));
                             if (found == null)
                                 throw new VrcGetException($"dependency not found: {dependency}");
 
