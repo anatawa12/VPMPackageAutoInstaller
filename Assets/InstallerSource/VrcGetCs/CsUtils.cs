@@ -8,9 +8,58 @@ using System.Threading.Tasks;
 using JetBrains.Annotations;
 using SemanticVersioning;
 using Version = SemanticVersioning.Version;
+using SystemPath = System.IO.Path;
 
 namespace Anatawa12.VrcGet
 {
+    /// <summary> represents &amp;std::path::Path or std::path::PathBuf </summary>
+    internal sealed class Path : IEquatable<Path>
+    {
+        [NotNull] private readonly string value;
+
+        public Path([NotNull] string value) => this.value = value ?? throw new ArgumentNullException(nameof(value));
+
+        public Path join(Path segment) => new Path(SystemPath.Combine(value, segment.value));
+        public Path joined(Path segment) => join(segment);
+        
+        public Path join(string segment) => new Path(SystemPath.Combine(value, segment));
+        public Path joined(string segment) => join(segment);
+
+        [CanBeNull]
+        public Path parent()
+        {
+            var parent = SystemPath.GetDirectoryName(value);
+            return parent == null ? null : new Path(parent);
+        }
+
+        public Path strip_prefix(Path prefix)
+        {
+            // this is not complete implementation but this works in most case
+            if (!value.StartsWith(prefix.AsString, StringComparison.Ordinal)) return null;
+            var stripped = value.Substring(prefix.AsString.Length);
+            var slashes = 0;
+            while (slashes < stripped.Length &&
+                   (stripped[slashes] == SystemPath.DirectorySeparatorChar ||
+                    stripped[slashes] == SystemPath.AltDirectorySeparatorChar))
+                slashes++;
+            if (slashes != 0) stripped = value.Substring(slashes);
+            return new Path(stripped);
+        }
+
+        public Path with_extension(string extension) => new Path(SystemPath.ChangeExtension(value, extension));
+
+        public bool has_root() => SystemPath.IsPathRooted(value);
+
+        public override string ToString() => value;
+        public string AsString => value;
+        public bool Equals(Path other) =>
+            !ReferenceEquals(null, other) && (ReferenceEquals(this, other) || value == other.value);
+        public static bool operator ==(Path left, Path right) => Equals(left, right);
+        public static bool operator !=(Path left, Path right) => !Equals(left, right);
+        public override bool Equals(object obj) => ReferenceEquals(this, obj) || obj is Path other && Equals(other);
+        public override int GetHashCode() => value.GetHashCode();
+    }
+
     // I use this class to keep original range representation
     internal sealed class VersionRange
     {
@@ -98,20 +147,15 @@ namespace Anatawa12.VrcGet
 
         public static bool is_pre(this Version version) => version.IsPreRelease;
 
-        public static async Task create_dir_all(string path)
-        {
-            await Task.Run(() => Directory.CreateDirectory(path));
-        }
 
-        public static async Task remove_dir_all(string path)
-        {
-            await Task.Run(() => Directory.Delete(path, true));
-        }
-
-        public static async Task remove_file(string path)
-        {
-            await Task.Run(() => File.Delete(path));
-        }
+        public static async Task WriteAllText(Path path, string content) =>
+            await Task.Run(() => File.WriteAllText(path.AsString, content));
+        public static async Task create_dir_all(Path path) =>
+            await Task.Run(() => Directory.CreateDirectory(path.AsString));
+        public static async Task remove_dir_all(Path path) =>
+            await Task.Run(() => Directory.Delete(path.AsString, true));
+        public static async Task remove_file(Path path) =>
+            await Task.Run(() => File.Delete(path.AsString));
 
         public static void AddAllTo<T>(this IEnumerable<T> self, List<T> collection)
         {
@@ -154,13 +198,6 @@ namespace Anatawa12.VrcGet
         {
             self.TryGetValue(key, out var result);
             return result;
-        }
-        [CanBeNull]
-        public static string strip_prefix(this string self, string prefix)
-        {
-            if (self.StartsWith(prefix, StringComparison.Ordinal))
-                return self.Substring(prefix.Length);
-            return null;
         }
 
         public static IEnumerable<T> DistinctBy<T, TKey>(this IEnumerable<T> self, Func<T, TKey> keySelector)
