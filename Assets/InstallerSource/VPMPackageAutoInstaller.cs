@@ -153,6 +153,19 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var config =
                 new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
+            var unityVersion = VrcGet.UnityVersion.parse(Application.unityVersion);
+            if (unityVersion != null && config.minimumUnity != null)
+            {
+                var minUnity = new VrcGet.UnityVersion(config.minimumUnity.major, config.minimumUnity.minor, 0,
+                    VrcGet.ReleaseType.Alpha, 0);
+                if (unityVersion < minUnity)
+                {
+                    EditorUtility.DisplayDialog("ERROR",
+                        MinimumUnityVersionMessage(config.minimumUnity.major, config.minimumUnity.minor), "OK");
+                    return false;
+                }
+            }
+
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
@@ -384,6 +397,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
     {
         [NotNull] public readonly VpaiRepository[] vpmRepositories;
         public readonly bool includePrerelease;
+        public readonly VrcGet.PartialUnityVersion minimumUnity;
         [NotNull] public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
 
         public VpaiConfig(JsonObj json)
@@ -393,6 +407,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
+            var unityVersion = json.Get("minimumUnity", JsonType.String, true);
+            minimumUnity = unityVersion != null
+                ? VrcGet.PartialUnityVersion.parse(unityVersion) ?? throw new Exception("invalid minimumUnity")
+                : null;
         }
     }
 
