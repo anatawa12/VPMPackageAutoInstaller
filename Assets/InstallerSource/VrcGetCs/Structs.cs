@@ -125,7 +125,7 @@ namespace Anatawa12.VrcGet
             if (unityStr.Contains('.'))
             {
                 var pair = unityStr.Split(new[] { '.' }, 2);
-                return new PartialUnityVersion( ushort.Parse(pair[0].Trim()), byte.Parse(pair[0].Trim()));
+                return new PartialUnityVersion( ushort.Parse(pair[0].Trim()), byte.Parse(pair[1].Trim()));
             }
             else
             {
