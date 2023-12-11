@@ -225,6 +225,20 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 return false;
             }
 
+            if (request.unity_conflicts().Length != 0)
+            {
+                var confirmMessage = new StringBuilder("The following packages are incompatible with current unity!\n");
+                foreach (var conflict in request.unity_conflicts())
+                    confirmMessage.Append("- ").Append(conflict).Append("\n");
+                confirmMessage.Append("\nPlease change unity version before installing packages!");
+                var message = confirmMessage.ToString();
+                // we found some package requires newer version of unity
+                if (!IsNoPrompt())
+                    EditorUtility.DisplayDialog("ERROR!", message, "OK");
+                Debug.LogError(message);
+                return false;
+            }
+
             if (request.locked().Count == 0)
             {
                 if (!IsNoPrompt())
