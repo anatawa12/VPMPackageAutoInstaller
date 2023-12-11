@@ -123,10 +123,6 @@ namespace Anatawa12.VrcGet
         public VersionRange as_range() => as_single_version() is Version version ? VersionRange.same_or_later(version) : _original;
     }
 
-    static class CsUtilsStatics
-    {
-    }
-
     static class CsUtils
     {
         public static TValue entry_or_default<TKey, TValue>(this Dictionary<TKey, TValue> self, TKey key) where TValue : new()
