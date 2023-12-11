@@ -1,8 +1,7 @@
 {
     "name": "com.anatawa12.vpm-package-auto-installer.tester",
     "references": [
-        "GUID:0acc523941302664db1f4e527237feb3",
-        "GUID:f7306773db58a40f2b8c5b6ed99db57b"
+        "GUID:0acc523941302664db1f4e527237feb3"
     ],
     "includePlatforms": [
         "Editor"
@@ -11,7 +10,7 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        
+        "com.anatawa12.vpm-package-auto-installer.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],
