@@ -22,4 +22,8 @@ namespace UnityEngine
         public static void LogException(System.Exception exception) => throw null;
         public static void Assert(bool condition, object message) => throw null;
     }
+
+    public class Application {
+        public static extern string unityVersion { get; }
+    }
 }

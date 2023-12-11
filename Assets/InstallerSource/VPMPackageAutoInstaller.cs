@@ -33,6 +33,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using Anatawa12.SimpleJson;
+using Anatawa12.VrcGet;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
@@ -172,7 +173,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             var dependencies = config.VpmDependencies.Select(kvp =>
             {
-                var package = env.find_package_by_name(kvp.Key, v => kvp.Value.matches(v, includePrerelease))
+                var package = env.find_package_by_name(kvp.Key, PackageSelector.range_for_pre(unityProject.unity_version, kvp.Value, includePrerelease))
                     ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
                 return package;
             }).ToList();

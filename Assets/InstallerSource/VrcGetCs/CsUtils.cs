@@ -125,6 +125,21 @@ namespace Anatawa12.VrcGet
 
     static class CsUtils
     {
+        public static bool split_once(this string input, char separator, out string left, out string right)
+        {
+            var index = input.IndexOf(separator);
+            if (index == -1)
+            {
+                left = null;
+                right = null;
+                return false;
+            }
+
+            left = input.Substring(0, index);
+            right = input.Substring(index + 1);
+            return true;
+        }
+
         public static TValue entry_or_default<TKey, TValue>(this Dictionary<TKey, TValue> self, TKey key) where TValue : new()
         {
             if (!self.TryGetValue(key, out var value))
