@@ -1,6 +1,6 @@
 {
   "name": "com.anatawa12.vpm-package-auto-installer.creator",
-  "version": "1.0.10-SNAPSHOT",
+  "version": "1.1.0-SNAPSHOT",
   "displayName": "VPMPackageAutoInstaller Creator",
   "description": "The tool to create VPMPackageAutoInstaller bundle creation",
   "dependencies": {
