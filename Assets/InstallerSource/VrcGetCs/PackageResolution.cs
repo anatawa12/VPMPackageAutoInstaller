@@ -139,7 +139,7 @@ namespace Anatawa12.VrcGet
                 var info = this.dependencies.entry_or_default(name);
                 info.set_using_info(locked.version, new HashSet<string>(locked.dependencies.Keys));
 
-                if (env.find_package_by_name(name, locked.version.Equals) is PackageInfo pkg) {
+                if (env.find_package_by_name(name, PackageSelector.specific_version(locked.version)) is PackageInfo pkg) {
                     info.legacy_packages = pkg.legacy_packages();
 
                     foreach (var legacy in pkg.legacy_packages()) {
@@ -274,6 +274,7 @@ namespace Anatawa12.VrcGet
         public static PackageResolutionResult collect_adding_packages(
             IReadOnlyDictionary<string, VpmDependency> dependencies,
             IReadOnlyDictionary<string, VpmLockedDependency> locked_dependencies,
+            [CanBeNull] UnityVersion unity_version,
             Environment env,
             IEnumerable<PackageInfo> packages,
             bool allow_prerelease
@@ -326,7 +327,8 @@ namespace Anatawa12.VrcGet
                         //log::debug!("processing package {name}: dependency {dependency} version {range}");
 
                         if (context.should_add_package(dependency, range)) {
-                            var found = env.find_package_by_name(dependency, range.matches);
+                            var found = env.find_package_by_name(dependency, PackageSelector.range_for(unity_version, range))
+                                        ?? env.find_package_by_name(dependency, PackageSelector.range_for(null, range));
                             if (found == null)
                                 throw new VrcGetException($"dependency not found: {dependency}");
 

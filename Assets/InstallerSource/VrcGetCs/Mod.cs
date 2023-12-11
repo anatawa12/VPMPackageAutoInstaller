@@ -139,11 +139,11 @@ namespace Anatawa12.VrcGet
         [NotNull]
         public Path get_repos_dir() => global_dir.join("Repos");
 
-        public PackageInfo? find_package_by_name([NotNull] string package, VersionSelector version)
+        public PackageInfo? find_package_by_name([NotNull] string package, PackageSelector package_selector)
         {
             var versions = find_packages(package);
 
-            versions.RemoveAll(x => !version(x.version()));
+            versions.RemoveAll(x => !package_selector.satisfies(x));
             versions.Sort((x, y) => y.version().CompareTo(x.version()));
 
             return versions.Count != 0 ? versions[0] as PackageInfo? : null;
@@ -349,6 +349,7 @@ namespace Anatawa12.VrcGet
         public Version version()  => this.package_json().version;
         public Dictionary<string, VersionRange> vpm_dependencies()  => this.package_json().vpm_dependencies;
         public string[] legacy_packages()  => this.package_json().legacy_packages;
+        [CanBeNull] public PartialUnityVersion unity()  => this.package_json().unity;
 
         // cs impl
         public bool is_remote() => _info is LocalCachedRepository;
@@ -607,15 +608,17 @@ namespace Anatawa12.VrcGet
     {
         private readonly Path project_dir;
         public readonly VpmManifest manifest; // VPAI: public
+        [CanBeNull] public UnityVersion unity_version; // VPAI: public
         private readonly List<(string dirName, PackageJson manifest)> unlocked_packages;
         private readonly Dictionary<string, PackageJson> installed_packages;
 
-        private UnityProject(Path project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages, Dictionary<string, PackageJson> installed_packages)
+        private UnityProject(Path project_dir, VpmManifest manifest, List<(string, PackageJson)> unlockedPackages, Dictionary<string, PackageJson> installed_packages, [CanBeNull] UnityVersion unityVersion)
         {
             this.project_dir = project_dir;
             this.manifest = manifest;
             this.unlocked_packages = unlockedPackages;
             this.installed_packages = installed_packages;
+            unity_version = unityVersion;
         }
 
         public static async Task<UnityProject> find_unity_project([NotNull] Path unityProject)
@@ -646,7 +649,9 @@ namespace Anatawa12.VrcGet
                     unlockedPackages.Add(read);
             }
 
-            return new UnityProject(unityFound, vpmManifest, unlockedPackages, installed_packages);
+            var unity_version = try_read_unity_version(unityFound);
+
+            return new UnityProject(unityFound, vpmManifest, unlockedPackages, installed_packages, unity_version);
         }
 
         private static async Task<(string, PackageJson)> try_read_unlocked_package(string name, Path path)
@@ -657,6 +662,12 @@ namespace Anatawa12.VrcGet
         }
 
         // no find_unity_project_path
+
+        private static UnityVersion try_read_unity_version(Path _path)
+        {
+            // VPAI: use unity api
+            return UnityVersion.parse(Application.unityVersion);
+        }
     }
 
     class AddPackageRequest
@@ -667,8 +678,9 @@ namespace Anatawa12.VrcGet
         Path[] _legacyFolders;
         string[] _legacy_packages;
         IReadOnlyDictionary<string, List<string>> _conflicts;
+        private string[] _unity_conflicts;
 
-        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, Path[] legacy_files, Path[] legacy_folders, string[] legacy_packages, Dictionary<string, List<string>> conflicts)
+        public AddPackageRequest((string, VpmDependency)[] dependencies, PackageInfo[] locked, Path[] legacy_files, Path[] legacy_folders, string[] legacy_packages, Dictionary<string, List<string>> conflicts, string[] unity_conflicts)
         {
             _dependencies = dependencies;
             _locked = locked;
@@ -676,6 +688,7 @@ namespace Anatawa12.VrcGet
             _legacyFolders = legacy_folders;
             _legacy_packages = legacy_packages;
             _conflicts = conflicts;
+            _unity_conflicts = unity_conflicts;
         }
         
         public IReadOnlyList<PackageInfo> locked() => _locked;
@@ -689,6 +702,7 @@ namespace Anatawa12.VrcGet
         public IReadOnlyList<string> legacy_packages() => _legacy_packages;
 
         public IReadOnlyDictionary<string, List<string>> conflicts() => _conflicts;
+        public string[] unity_conflicts() => _unity_conflicts;
     }
 
     sealed partial class UnityProject {
@@ -731,15 +745,37 @@ namespace Anatawa12.VrcGet
                     legacy_files: Array.Empty<Path>(),
                     legacy_folders: Array.Empty<Path>(),
                     legacy_packages: Array.Empty<string>(),
-                    conflicts: new Dictionary<string, List<string>>(0)
+                    conflicts: new Dictionary<string, List<string>>(0),
+                    unity_conflicts: Array.Empty<string>()
                 );
             }
 
-            var result = package_resolution.collect_adding_packages(manifest.dependencies(), manifest.locked(), env, adding_packages, allow_prerelease);
+            var result = package_resolution.collect_adding_packages(manifest.dependencies(), manifest.locked(), unity_version, env, adding_packages, allow_prerelease);
 
             var legacy_packages = result.found_legacy_packages.Where(name => manifest.locked().ContainsKey(name)).ToArray();
 
             var (legacy_files, legacy_folders) = await this.collect_legacy_assets(result.new_packages);
+
+            /*
+             *
+             // rewrite following rust in C#
+        let unity_conflicts = if let Some(unity) = self.unity_version {
+            result.new_packages
+                .iter()
+                .filter(|pkg| !unity_compatible(pkg, unity))
+                .map(|pkg| pkg.name().to_owned())
+                .collect()
+        } else {
+            vec![]
+        };
+             */
+
+            var unity_conflicts = unity_version != null
+                ? result.new_packages
+                    .Where(pkg => !unity_compatible(pkg, unity_version))
+                    .Select(pkg => pkg.name())
+                    .ToArray()
+                : Array.Empty<string>();
 
             return new AddPackageRequest( 
                 dependencies: dependencies.ToArray(), 
@@ -747,7 +783,8 @@ namespace Anatawa12.VrcGet
                 conflicts: result.conflicts,
                 legacy_files: legacy_files,
                 legacy_folders: legacy_folders,
-                legacy_packages: legacy_packages
+                legacy_packages: legacy_packages,
+                unity_conflicts: unity_conflicts
             );
         }
     }
@@ -984,7 +1021,69 @@ namespace Anatawa12.VrcGet
     }
 
     #endregion
-    
+
+    partial class PackageSelector
+    {
+        [CanBeNull] UnityVersion project_unity;
+        [NotNull] VersionSelector version_selector;
+
+        private PackageSelector([CanBeNull] UnityVersion projectUnity, [NotNull] VersionSelector versionSelector)
+        {
+            project_unity = projectUnity;
+            version_selector = versionSelector;
+        }
+
+        public static PackageSelector specific_version(Version version) =>
+            new PackageSelector(null, version.Equals);
+
+        public static PackageSelector latest_for(UnityVersion unityVersion, bool include_prerelease) =>
+            new PackageSelector(unityVersion,
+                include_prerelease ? (VersionSelector)(_ => true) : version => !version.IsPreRelease);
+
+        public static PackageSelector range_for([CanBeNull] UnityVersion unityVersion, VersionRange range) =>
+            new PackageSelector(unityVersion, range.matches);
+
+        public static PackageSelector ranges_for(UnityVersion unityVersion, VersionRange[] ranges) =>
+            new PackageSelector(unityVersion, version => ranges.All(range => range.matches(version)));
+
+        // VPAI
+        public static PackageSelector range_for_pre([CanBeNull] UnityVersion unityVersion, VersionRange range, bool prerelease) =>
+            new PackageSelector(unityVersion, version => range.match_pre(version, prerelease));
+    }
+
+    static partial class ModStatics
+    {
+        public static bool unity_compatible(PackageInfo package, UnityVersion unity)
+        {
+            bool is_vrcsdk_for_2019(Version version) => version.Major == 3 && version.Minor <= 4;
+            bool is_resolver_for_2019(Version version) => version.Major == 0 && version.Minor == 1 && version.Patch <= 26;
+
+            switch (package.name())
+            {
+                case "com.vrchat.avatars":
+                case "com.vrchat.worlds":
+                case "com.vrchat.base" when is_vrcsdk_for_2019(package.version()):
+                    return unity.major() == 2019;
+                case "com.vrchat.core.vpm-resolver" when is_resolver_for_2019(package.version()):
+                    return unity.major() == 2019;
+                default:
+                    if (package.unity() is PartialUnityVersion min_unity)
+                        return unity >= new UnityVersion(min_unity.major, min_unity.minor, 0, ReleaseType.Alpha, 0);
+                    return true;
+            }
+        }
+    }
+
+    partial class PackageSelector
+    {
+        public bool satisfies(PackageInfo package)
+        {
+            if (project_unity != null && !unity_compatible(package, project_unity))
+                return false;
+            return version_selector(package.version());
+        }
+    }
+
     delegate bool VersionSelector(Version version);
 
     static partial class ModStatics {

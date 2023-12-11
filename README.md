@@ -101,7 +101,10 @@ will make unitypackage for AvatarOptimizer 0.2.x
   },
   // by default, beta releases are not allowed.
   // to allow all beta versions in that range, please make this true
-  "includePrerelease": false
+  "includePrerelease": false,
+  // If you want to disallow unity version lower than specific version, you can specify it here.
+  // Regardless if this is not specified, unity version will be checked by VPM.
+  "minimumUnity": "2022.3"
 }
 ```
 

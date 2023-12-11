@@ -153,6 +153,19 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var config =
                 new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
+            var unityVersion = VrcGet.UnityVersion.parse(Application.unityVersion);
+            if (unityVersion != null && config.minimumUnity != null)
+            {
+                var minUnity = new VrcGet.UnityVersion(config.minimumUnity.major, config.minimumUnity.minor, 0,
+                    VrcGet.ReleaseType.Alpha, 0);
+                if (unityVersion < minUnity)
+                {
+                    EditorUtility.DisplayDialog("ERROR",
+                        MinimumUnityVersionMessage(config.minimumUnity.major, config.minimumUnity.minor), "OK");
+                    return false;
+                }
+            }
+
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "VpmPackageAutoInstaller/0.3 (github:anatawa12/VpmPackageAutoInstaller) " +
@@ -170,12 +183,31 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Resolving dependencies...", Progress.ResolvingDependencies);
             var includePrerelease = config.includePrerelease;
 
-            var dependencies = config.VpmDependencies.Select(kvp =>
+            var unityIncompatibles = new Dictionary<string, VrcGet.VersionRange>();
+            VrcGet.PartialUnityVersion min_unity_version = null;
+            var dependencies = config.VpmDependencies.SelectMany(kvp =>
             {
-                var package = env.find_package_by_name(kvp.Key, v => kvp.Value.matches(v, includePrerelease))
-                    ?? throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
-                return package;
+                var package = env.find_package_by_name(kvp.Key, VrcGet.PackageSelector.range_for_pre(unityProject.unity_version, kvp.Value, includePrerelease));
+                if (package == null)
+                {
+                    var withoutUnity = env.find_package_by_name(kvp.Key, VrcGet.PackageSelector.range_for_pre(null, kvp.Value, includePrerelease));
+                    if (withoutUnity == null)
+                        throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
+                    unityIncompatibles[kvp.Key] = kvp.Value;
+                    return Array.Empty<VrcGet.PackageInfo>();
+                }
+                return new[] { package.Value };
             }).ToList();
+
+            if (unityIncompatibles.Count != 0)
+            {
+                var message = UnityIncompatibleMessage(env, unityIncompatibles, includePrerelease);
+                // we found some package requires newer version of unity
+                if (!IsNoPrompt())
+                    EditorUtility.DisplayDialog("ERROR!", message, "OK");
+                Debug.LogError(message);
+                return false;
+            }
 
             VrcGet.AddPackageRequest request;
             try
@@ -190,6 +222,20 @@ namespace Anatawa12.VpmPackageAutoInstaller
                         e.Message + "\n\n" +
                         "Please see console for more details", "OK");
                 Debug.LogException(e);
+                return false;
+            }
+
+            if (request.unity_conflicts().Length != 0)
+            {
+                var confirmMessage = new StringBuilder("The following packages are incompatible with current unity!\n");
+                foreach (var conflict in request.unity_conflicts())
+                    confirmMessage.Append("- ").Append(conflict).Append("\n");
+                confirmMessage.Append("\nPlease change unity version before installing packages!");
+                var message = confirmMessage.ToString();
+                // we found some package requires newer version of unity
+                if (!IsNoPrompt())
+                    EditorUtility.DisplayDialog("ERROR!", message, "OK");
+                Debug.LogError(message);
                 return false;
             }
 
@@ -256,6 +302,43 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Almost done!", Progress.Finish);
             return true;
         }
+
+        private static string UnityIncompatibleMessage(VrcGet.Environment env,
+            Dictionary<string, VrcGet.VersionRange> unityIncompatibles, bool includePrerelease)
+        {
+            if (unityIncompatibles.ContainsKey("com.vrchat.avatars")
+                || unityIncompatibles.ContainsKey("com.vrchat.worlds")
+                || unityIncompatibles.ContainsKey("com.vrchat.base")
+                || unityIncompatibles.ContainsKey("com.vrchat.core.vpm-resolver"))
+            {
+                // VRCSDK has both upper and lower limit. it might hit upper limit
+                if (!Application.unityVersion.StartsWith("2019.", StringComparison.Ordinal))
+                {
+                    // it's not unity 2019 so the tool looks requires 2019.x SDK but not 2019.x
+                    return "You're installing tools that require VRCSDK for Unity 2019.x " +
+                           "but you're using other versions of VRCSDK!\n" +
+                           "Please use older VRCSDK or wait for tool updates!";
+                }
+            }
+
+            // otherwise, Upgrade Unity is required.
+            var minimumVersion = unityIncompatibles
+                .Select(p => MinimumUnityVersionForPackage(p.Key, p.Value))
+                .Max();
+
+            return MinimumUnityVersionMessage(minimumVersion.major, minimumVersion.minor);
+
+            VrcGet.PartialUnityVersion MinimumUnityVersionForPackage(string package, VrcGet.VersionRange range) =>
+                env.find_packages(package)
+                    .Where(x => range.match_pre(x.version(), includePrerelease))
+                    .Where(x => x.unity() != null)
+                    .Select(x => x.unity())
+                    .Min();
+        }
+
+        private static string MinimumUnityVersionMessage(ushort major, byte minor) =>
+            $"You're installing packages requires unity {major}.{minor} or later! \n" +
+            $"Please upgrade your unity to {major}.{minor} or later!";
 
         internal static void ResolveUnityPackageManger()
         {
@@ -328,6 +411,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
     {
         [NotNull] public readonly VpaiRepository[] vpmRepositories;
         public readonly bool includePrerelease;
+        public readonly VrcGet.PartialUnityVersion minimumUnity;
         [NotNull] public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
 
         public VpaiConfig(JsonObj json)
@@ -337,6 +421,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
+            var unityVersion = json.Get("minimumUnity", JsonType.String, true);
+            minimumUnity = unityVersion != null
+                ? VrcGet.PartialUnityVersion.parse(unityVersion) ?? throw new Exception("invalid minimumUnity")
+                : null;
         }
     }
 

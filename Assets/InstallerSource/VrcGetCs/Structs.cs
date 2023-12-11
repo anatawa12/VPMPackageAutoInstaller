@@ -80,6 +80,7 @@ namespace Anatawa12.VrcGet
         [NotNull] public string name { get; }
         [NotNull] public Version version { get; }
         [NotNull] public string url { get; }
+        [CanBeNull] public PartialUnityVersion unity;
         [NotNull] public Dictionary<string, VersionRange> vpm_dependencies { get; }
         [NotNull] public Dictionary<string, string> legacy_folders { get; }
         [NotNull] public Dictionary<string, string> legacy_files { get; }
@@ -91,6 +92,8 @@ namespace Anatawa12.VrcGet
             version = Version.Parse(Json.Get("version", JsonType.String));
             name = Json.Get("name", JsonType.String);
             url = Json.Get("url", JsonType.String, true) ?? "";
+            var unity_str = Json.Get("unity", JsonType.String, true);
+            unity = unity_str == null ? null : PartialUnityVersion.parse(unity_str);
             vpm_dependencies = Json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VersionRange>();
@@ -103,6 +106,41 @@ namespace Anatawa12.VrcGet
             legacy_packages = Json.Get("legacyPackages", JsonType.List, true)
                                   ?.Cast<string>().ToArray()
                               ?? Array.Empty<string>();
+        }
+    }
+
+    internal class PartialUnityVersion : IComparable<PartialUnityVersion>
+    {
+        public readonly ushort major;
+        public readonly byte minor;
+
+        private PartialUnityVersion(ushort major, byte minor)
+        {
+            this.major = major;
+            this.minor = minor;
+        }
+
+        public static PartialUnityVersion parse(string unityStr)
+        {
+            if (unityStr.Contains('.'))
+            {
+                var pair = unityStr.Split(new[] { '.' }, 2);
+                return new PartialUnityVersion( ushort.Parse(pair[0].Trim()), byte.Parse(pair[1].Trim()));
+            }
+            else
+            {
+                return new PartialUnityVersion(ushort.Parse(unityStr.Trim()), 0);
+            }
+        }
+
+        // VPAI
+        public int CompareTo(PartialUnityVersion other)
+        {
+            if (ReferenceEquals(this, other)) return 0;
+            if (ReferenceEquals(null, other)) return 1;
+            var majorComparison = major.CompareTo(other.major);
+            if (majorComparison != 0) return majorComparison;
+            return minor.CompareTo(other.minor);
         }
     }
 
