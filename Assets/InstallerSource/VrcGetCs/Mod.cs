@@ -1060,8 +1060,8 @@ namespace Anatawa12.VrcGet
 
             switch (package.name())
             {
-                case "com.vrchat.avatars":
-                case "com.vrchat.worlds":
+                case "com.vrchat.avatars" when is_vrcsdk_for_2019(package.version()):
+                case "com.vrchat.worlds" when is_vrcsdk_for_2019(package.version()):
                 case "com.vrchat.base" when is_vrcsdk_for_2019(package.version()):
                     return unity.major() == 2019;
                 case "com.vrchat.core.vpm-resolver" when is_resolver_for_2019(package.version()):
