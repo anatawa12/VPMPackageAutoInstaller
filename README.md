@@ -62,12 +62,14 @@ will make unitypackage for AvatarOptimizer 0.2.x
 
 #### Just create unitypackage
 
-1. Clone or [download][download-this] this project.
-2. Execute `./Assets/InstallerSource/DllBuild\~/build-and-copy.sh` to build ths tool
+1. Clone or [download][download-this] this project (If cloning, ensure submodules are initialized. Windows users: Ensure symlinks are enabled in Git)
+2. Execute script to build this tool
+   - `./Assets/InstallerSource/DllBuild\~/build-and-copy.sh` (macOS, Linux)
+   - `.\Assets\InstallerSource\DllBuild~\build-and-copy.ps1` (Windows)
 3. Edit config.json at `Assets/com.anatawa12.vpm-package-auto-installer/config.json`
 4. Open this project with Unity (if you did, there's no need to relaunch)
 5. Left-click on `Assets/com.anatawa12.vpm-package-auto-installer` and click `Export Package`
-6. un-check `Incliude dependencies` on `Exporting package` dialog.
+6. Un-check `Include dependencies` on `Exporting package` dialog.
 7. Click `Export...` and save `.unitypackage` to anywhere you want.
 8. Share `.unitypackage` with user who want to use your package.
 
