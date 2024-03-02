@@ -241,7 +241,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
 
             if (request.locked().Count == 0)
             {
-                if (!IsNoPrompt())
+                if (!IsNoPrompt() && !config.silentIfInstalled)
                     EditorUtility.DisplayDialog("Nothing TO DO!", "All Packages are Installed!", "OK");
                 return false;
             }
@@ -411,6 +411,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
     {
         [NotNull] public readonly VpaiRepository[] vpmRepositories;
         public readonly bool includePrerelease;
+        public readonly bool silentIfInstalled;
         public readonly VrcGet.PartialUnityVersion minimumUnity;
         [NotNull] public readonly Dictionary<string, VrcGet.VersionRange> VpmDependencies;
 
@@ -418,6 +419,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
         {
             vpmRepositories = json.Get("vpmRepositories", JsonType.List, true)?.Select(v => new VpaiRepository(v))?.ToArray() ?? Array.Empty<VpaiRepository>();
             includePrerelease = json.Get("includePrerelease", JsonType.Bool, true);
+            silentIfInstalled = json.Get("silentIfInstalled", JsonType.Bool, true);
             VpmDependencies = json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VrcGet.VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VrcGet.VersionRange>();
