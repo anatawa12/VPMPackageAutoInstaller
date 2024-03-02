@@ -104,6 +104,10 @@ will make unitypackage for AvatarOptimizer 0.2.x
   // by default, beta releases are not allowed.
   // to allow all beta versions in that range, please make this true
   "includePrerelease": false,
+  // For advanced usage only. This will suppress the prompt to users if dependencies are already installed.
+  // It is strongly recommended you keep this as the default false, otherwise users may be confused why nothing happened.
+  // This should only enabled in certain use cases, for example if you are distributing with other assets
+  "silentIfInstalled": false,
   // If you want to disallow unity version lower than specific version, you can specify it here.
   // Regardless if this is not specified, unity version will be checked by VPM.
   "minimumUnity": "2022.3"
