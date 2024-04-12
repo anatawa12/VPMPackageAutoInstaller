@@ -633,7 +633,7 @@ namespace Anatawa12.VrcGet
             var unlockedPackages = new List<(string, PackageJson)>();
 
             var packages = unityFound.join("Packages");
-            foreach (var dir in await Task.Run(() => Directory.GetDirectories(packages.AsString)))
+            foreach (var dir in await GetListOfPackages(packages))
             {
                 var read = await try_read_unlocked_package(dir, packages.join(dir));
                 var is_installed = false;
@@ -652,6 +652,27 @@ namespace Anatawa12.VrcGet
             var unity_version = try_read_unity_version(unityFound);
 
             return new UnityProject(unityFound, vpmManifest, unlockedPackages, installed_packages, unity_version);
+        }
+
+        // VPAI: use UnityEditor API to get list of packages
+        public static async Task<string[]> GetListOfPackages(Path packages)
+        {
+            var packageInfos = typeof(UnityEditor.PackageManager.PackageInfo);
+            var bindingFlags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public |
+                               System.Reflection.BindingFlags.NonPublic;
+
+            var getAll = packageInfos.GetMethod("GetAll", bindingFlags);
+            if (getAll == null)
+                getAll = packageInfos.GetMethod("GetAllRegisteredPackages", bindingFlags);
+
+            string[] result;
+            if (getAll != null)
+                result = ((UnityEditor.PackageManager.PackageInfo[])getAll.Invoke(null, null)).Select(x => x.name)
+                    .ToArray();
+            else
+                result = await Task.Run(() => Directory.GetDirectories(packages.AsString));
+
+            return result;
         }
 
         private static async Task<(string, PackageJson)> try_read_unlocked_package(string name, Path path)
@@ -777,9 +798,11 @@ namespace Anatawa12.VrcGet
                     .ToArray()
                 : Array.Empty<string>();
 
+            var unlocked = new HashSet<string>(this.unlocked_packages.Select(x => x.manifest?.name).Where(x => x != null));
+
             return new AddPackageRequest( 
                 dependencies: dependencies.ToArray(), 
-                locked: result.new_packages,
+                locked: result.new_packages.Where(x => !unlocked.Contains(x.name())).ToArray(),
                 conflicts: result.conflicts,
                 legacy_files: legacy_files,
                 legacy_folders: legacy_folders,
