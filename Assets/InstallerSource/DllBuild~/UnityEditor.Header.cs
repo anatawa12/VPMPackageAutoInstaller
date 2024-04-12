@@ -13,6 +13,11 @@ namespace UnityEditor
         {
             internal void Resolve() => throw null;
         }
+
+        public class PackageInfo
+        {
+            public string name => throw null;
+        }
     }
 
     public static class EditorUtility

@@ -93,7 +93,15 @@ namespace Anatawa12.VrcGet
             name = Json.Get("name", JsonType.String);
             url = Json.Get("url", JsonType.String, true) ?? "";
             var unity_str = Json.Get("unity", JsonType.String, true);
-            unity = unity_str == null ? null : PartialUnityVersion.parse(unity_str);
+            unity = null;
+            try
+            {
+                unity = unity_str == null ? null : PartialUnityVersion.parse(unity_str);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"failed to parse unity version: {unity_str}, {e}");
+            }
             vpm_dependencies = Json.Get("vpmDependencies", JsonType.Obj, true)
                                   ?.ToDictionary(x => x.Item1, x => VersionRange.Parse((string)x.Item2))
                               ?? new Dictionary<string, VersionRange>();

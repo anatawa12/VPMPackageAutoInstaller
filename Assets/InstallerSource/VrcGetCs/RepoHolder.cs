@@ -26,10 +26,22 @@ namespace Anatawa12.VrcGet
         internal async Task load_repos([CanBeNull] HttpClient http, [NotNull] [ItemNotNull] IEnumerable<RepoSource> sources)
         {
             var repos = await Task.WhenAll(sources.Select(async src =>
-                (await load_repo_from_source(http, src), src.file_path())));
+            {
+                try
+                {
+                    return (await load_repo_from_source(http, src), src.file_path());
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError("Error loading repository");
+                    Debug.LogException(e);
+                    return (null, src.file_path());
+                }
+            }));
 
             foreach (var (repo, path) in repos)
             {
+                if (repo == null) continue;
                 cached_repos_new[path] = repo;
             }
         }
