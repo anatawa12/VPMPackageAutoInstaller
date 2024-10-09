@@ -42,7 +42,7 @@ namespace Anatawa12.VrcGet
                    (stripped[slashes] == SystemPath.DirectorySeparatorChar ||
                     stripped[slashes] == SystemPath.AltDirectorySeparatorChar))
                 slashes++;
-            if (slashes != 0) stripped = value.Substring(slashes);
+            if (slashes != 0) stripped = stripped.Substring(slashes);
             return new Path(stripped);
         }
 
