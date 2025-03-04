@@ -183,6 +183,15 @@ namespace Anatawa12.VpmPackageAutoInstaller
             ShowProgress("Resolving dependencies...", Progress.ResolvingDependencies);
             var includePrerelease = config.includePrerelease;
 
+            {
+                var builder = new StringBuilder();
+                builder.Append("[VPAI DEBUG]package list:\n");
+                foreach (var (repo, pkg) in env.get_repos()
+                             .SelectMany(repo => repo.get_packages().SelectMany(x => x.versions.Values)?.Select(pkg => (repo, pkg))))
+                    builder.Append($"{pkg.name} version {pkg.version} from {repo.id() ?? repo.url()}\n");
+                Debug.Log(builder.ToString());
+            }
+
             var unityIncompatibles = new Dictionary<string, VrcGet.VersionRange>();
             VrcGet.PartialUnityVersion min_unity_version = null;
             var dependencies = config.VpmDependencies.SelectMany(kvp =>
