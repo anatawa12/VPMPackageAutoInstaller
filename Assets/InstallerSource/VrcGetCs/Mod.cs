@@ -283,14 +283,21 @@ namespace Anatawa12.VrcGet
 
         public async Task AddPendingRepository([NotNull] string url, [CanBeNull] string name, [CanBeNull] Dictionary<string, string> headers)
         {
+            Debug.Log($"[VPAI Debug]: Adding Repository: {url}");
             if (get_user_repos().Any(x => x.url == url))
+            {
+                Debug.Log($"[VPAI Debug]: repository already added: {url}");
                 return; // allow already added
+            }
+
             if (http == null)
                 throw new OfflineModeException();
 
+            Debug.Log($"[VPAI Debug]: Downloading Repository: {url}");
             var response = await download_remote_repository(http, url, headers, null);
             Debug.Assert(response != null, nameof(response) + " != null");
             var (remote_repo, etag) = response.Value;
+            Debug.Log($"[VPAI Debug]: Downloaded Repository: {url}");
 
             var localCache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
             // set etag
@@ -300,6 +307,7 @@ namespace Anatawa12.VrcGet
                 localCache.vrc_get.etag = etag;
             }
             var localPath = get_repos_dir().join($"{Guid.NewGuid()}.json");
+            Debug.Log($"[VPAI Debug]: Adding Repository: {url} to {localPath}");
             repo_cache.AddRepository(localPath, localCache);
             PendingRepositories.Add((localPath, remote_repo.url()));
         }
@@ -497,6 +505,7 @@ namespace Anatawa12.VrcGet
             var response = await client.SendAsync(request);
             if (etag != null && response.StatusCode == HttpStatusCode.NotModified)
                 return null;
+            Debug.Log($"[VPAI DEBUG]: Downloaded Repository: {url}: returns {(int)response.StatusCode}: {response.StatusCode}");
             response.EnsureSuccessStatusCode();
 
             var newEtag = response.Headers.ETag?.ToString();

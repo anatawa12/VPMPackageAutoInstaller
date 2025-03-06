@@ -186,9 +186,14 @@ namespace Anatawa12.VpmPackageAutoInstaller
             {
                 var builder = new StringBuilder();
                 builder.Append("[VPAI DEBUG]package list:\n");
-                foreach (var (repo, pkg) in env.get_repos()
-                             .SelectMany(repo => repo.get_packages().SelectMany(x => x.versions.Values)?.Select(pkg => (repo, pkg))))
-                    builder.Append($"{pkg.name} version {pkg.version} from {repo.id() ?? repo.url()}\n");
+                foreach (var repo in env.get_repos())
+                {
+                    builder.Append($"Repository: {repo.id() ?? repo.url()}\n");
+                    foreach (var pkg in repo.get_packages().SelectMany(x => x.versions.Values))
+                    {
+                        builder.Append($"Package: {pkg.name} version {pkg.version}");
+                    }
+                }
                 Debug.Log(builder.ToString());
             }
 
