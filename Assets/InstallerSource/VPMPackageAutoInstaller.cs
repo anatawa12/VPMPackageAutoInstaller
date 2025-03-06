@@ -153,6 +153,10 @@ namespace Anatawa12.VpmPackageAutoInstaller
             var config =
                 new VpaiConfig(new JsonParser(File.ReadAllText(configJson, Encoding.UTF8)).Parse(JsonType.Obj));
 
+            Debug.Log("[VPAI DEBUG]: Config\n" +
+                      $"repositories: {string.Join(",", config.vpmRepositories.Select(x => x.url))}\n" +
+                      $"packages: {string.Join(",", config.VpmDependencies.Keys)}");
+
             var unityVersion = VrcGet.UnityVersion.parse(Application.unityVersion);
             if (unityVersion != null && config.minimumUnity != null)
             {
