@@ -195,7 +195,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     builder.Append($"Repository: {repo.id() ?? repo.url()}\n");
                     foreach (var pkg in repo.get_packages().SelectMany(x => x.versions.Values))
                     {
-                        builder.Append($"Package: {pkg.name} version {pkg.version}");
+                        builder.Append($"Package: {pkg.name} version {pkg.version}\n");
                     }
                 }
                 Debug.Log(builder.ToString());

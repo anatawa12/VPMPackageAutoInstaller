@@ -60,6 +60,7 @@ namespace Anatawa12.VrcGet
 
         public async Task load_package_infos(bool update)
         {
+            Debug.Log($"[VPAI Debug]: load_package_infos user repos: {string.Join(",", this.get_user_repos().Select(x => x.url))}");
             var http = update ? this.http : null;
             await this.repo_cache.load_repos(http, this.get_repo_sources());
             this.update_user_repo_id();
@@ -369,6 +370,7 @@ namespace Anatawa12.VrcGet
     {
         Task<LocalCachedRepository> VisitLoadRepo([CanBeNull] HttpClient client);
         Path file_path();
+        string Description { get; }
     }
 
     class PreDefinedRepoSource : RepoSource
@@ -385,6 +387,7 @@ namespace Anatawa12.VrcGet
         public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadPreDefinedRepo(client, this);
 
         public Path file_path() => path;
+        public string Description => $"Predefined: {Info.name}";
 
         public readonly struct Information
         {
@@ -422,6 +425,8 @@ namespace Anatawa12.VrcGet
             Setting = setting;
         }
 
+        public string Description => $"UserRepo: url: {Setting.url}, path: {Setting.local_path}";
+
         public Task<LocalCachedRepository> VisitLoadRepo(HttpClient client) => RepoHolder.LoadUserRepo(client, this);
 
         public Path file_path() => Setting.local_path;
@@ -430,11 +435,9 @@ namespace Anatawa12.VrcGet
     static partial class ModStatics
     {
         public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] Path path,
-            [NotNull] LocalCachedRepository repo)
+            [NotNull] LocalCachedRepository repo, string remoteURL)
         {
-            var remoteURL = repo.url();
-            if (remoteURL == null) return;
-
+            Debug.Log($"Updating from remote Repository: path: {path}, url: {remoteURL}");
             var foundEtag = repo.vrc_get?.etag;
             try
             {
@@ -503,9 +506,9 @@ namespace Anatawa12.VrcGet
                     request.Headers.TryAddWithoutValidation(key, value);
 
             var response = await client.SendAsync(request);
+            Debug.Log($"[VPAI DEBUG]: Downloaded Repository: {url}: returns {(int)response.StatusCode}: {response.StatusCode}");
             if (etag != null && response.StatusCode == HttpStatusCode.NotModified)
                 return null;
-            Debug.Log($"[VPAI DEBUG]: Downloaded Repository: {url}: returns {(int)response.StatusCode}: {response.StatusCode}");
             response.EnsureSuccessStatusCode();
 
             var newEtag = response.Headers.ETag?.ToString();

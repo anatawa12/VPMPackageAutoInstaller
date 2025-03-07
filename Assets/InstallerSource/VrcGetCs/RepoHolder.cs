@@ -27,6 +27,7 @@ namespace Anatawa12.VrcGet
         {
             var repos = await Task.WhenAll(sources.Select(async src =>
             {
+                Debug.Log($"[VPAI Debug]: Loading repository {src.Description}");
                 try
                 {
                     return (await load_repo_from_source(http, src), src.file_path());
@@ -88,7 +89,8 @@ namespace Anatawa12.VrcGet
             [NotNull] string remote_url
         )
         {
-            return await load_repo(path, client, async () =>
+            Debug.Log($"Loading Remote Repository: {remote_url}");
+            return await load_repo(path, client, remote_url, async () =>
             {
                 // if local repository not found: try downloading remote one
                 if (client == null) throw new OfflineModeException();
@@ -124,15 +126,17 @@ namespace Anatawa12.VrcGet
             [NotNull] Path path
         )
         {
-            return await load_repo(path, client, () => throw new IOException("repository not found"));
+            return await load_repo(path, client, null, () => throw new IOException("repository not found"));
         }
 
         static async Task<LocalCachedRepository> load_repo(
             [NotNull] Path path,
             [CanBeNull] HttpClient http,
+            [CanBeNull] string remote_url,
             Func<Task<LocalCachedRepository>> if_not_found
         )
         {
+            Debug.Log($"Loading Repository: path: {path}, url: {remote_url}");
             string text;
             try
             {
@@ -140,15 +144,19 @@ namespace Anatawa12.VrcGet
             }
             catch
             {
+                Debug.Log($"[VPAI Debug]: Loading repo {path} failed. trying fallback path");
                 return await if_not_found();
             }
 
             if (text == null)
+            {
+                Debug.Log($"[VPAI Debug]: Loading repo {path} failed (no exists). trying fallback path");
                 return await if_not_found();
+            }
 
             var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
-            if (http != null)
-                await update_from_remote(http, path, loaded);
+            if (http != null && remote_url != null)
+                await update_from_remote(http, path, loaded, remote_url);
             return loaded;
         }
 
