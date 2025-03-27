@@ -170,7 +170,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: installer-template
           path: build
@@ -199,11 +199,11 @@ jobs:
     if: inputs.publish || inputs.publish-page
     needs: create-release
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: gh-pages
       - uses: snow-actions/git-config-user@v1.0.0
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: pages-artifact
       - name: publish github pages
