@@ -753,12 +753,13 @@ namespace Anatawa12.VrcGet
             {
                 var dep = this.manifest.locked().get(request.name());
                 var update = dep == null || dep.version < request.version();
+                var installed = this.installed_packages.ContainsKey(request.name()); // VPAI: install if actual package does not exist
 
                 if (to_dependencies) {
                     dependencies.Add((request.name(), new VpmDependency(request.version())));
                 }
 
-                if (update) {
+                if (update || !installed) {
                     adding_packages.Add(request);
                 }
             }
