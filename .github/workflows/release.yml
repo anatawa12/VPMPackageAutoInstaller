@@ -25,7 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.update-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with: 
           submodules: recursive
           token: ${{ inputs.publish && secrets.MASTER_GITHUB_PAT || github.token }}
@@ -45,8 +45,8 @@ jobs:
         id: update-version
         run: |
           set-version "$(version-unsnapshot "$(get-version)")"
-          echo "VERSION=$(get-version)" >> $GITHUB_ENV
-          echo "version=$(get-version)" >> $GITHUB_OUTPUT
+          echo "VERSION=$(get-version)" >> "$GITHUB_ENV"
+          echo "version=$(get-version)" >> "$GITHUB_OUTPUT"
 
       - name: Commit & tag version
         if: ${{ inputs.publish }}
@@ -66,7 +66,7 @@ jobs:
           output-path: build/installer-template.unitypackage
           package-path: Assets/com.anatawa12.vpm-package-auto-installer
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: installer-template
           path: build/installer-template.unitypackage
@@ -81,13 +81,14 @@ jobs:
             zip -r "../../build/$PKG_NAME-$VERSION.zip" .
           popd
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: vpm-package
           path: build/${{ env.PKG_NAME }}-${{ env.VERSION }}.zip
 
       - name: Build Creator rust
-        run: export TEMPLATE_UNITYPACKAGE_PATH="$(pwd)/build/installer-template.unitypackage" &&
+        run: TEMPLATE_UNITYPACKAGE_PATH="$(pwd)/build/installer-template.unitypackage" &&
+          export TEMPLATE_UNITYPACKAGE_PATH &&
           cd "creator/rust" && 
           cargo build --target wasm32-unknown-unknown --release --lib
       - name: Inject wasm file to creator.mjs
@@ -98,7 +99,7 @@ jobs:
           base64 "$SOURCE_WASM" | tr -d '\n' | tr -d '=' | sed 's/^/  const base64 = "/; s/$/";/' > "$BASE64_WASM_LINE"
           sed -e "/BASE64-INJECT-LINE/{ r build/vpai_creator.wasm.base64.line
           d }" creator/creator.mjs > build/creator.mjs
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: installer-creator-js
           path: build/creator.mjs
@@ -109,7 +110,7 @@ jobs:
           # create creator installer unity package
           node build/creator.mjs building/config.json build/installer-creator.unitypackage
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: installer-creator
           path: build/installer-creator.unitypackage
@@ -128,7 +129,7 @@ jobs:
           cp creator/index.html "$tmp/"
           cp build/creator.mjs "$tmp/"
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: pages-artifact
           path: build/pages/
