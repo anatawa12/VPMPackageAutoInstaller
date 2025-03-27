@@ -9,6 +9,10 @@ on:
         description: "True to Publish page even if publish is false"
         type: boolean
         required: false
+      publish-worker:
+        description: "True to Publish workers even if publish is false"
+        type: boolean
+        required: false
 
 env:
   CREATOR_PKG_ROOT: "Packages/com.anatawa12.vpm-package-auto-installer.creator"
@@ -159,7 +163,7 @@ jobs:
 
   publish-cloudflare-workers:
     runs-on: ubuntu-latest
-    if: inputs.publish
+    if: inputs.publish || inputs.publish-workers
     needs: create-release
     environment: cloudflare workers
     steps:
