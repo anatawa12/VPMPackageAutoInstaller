@@ -99,15 +99,20 @@ namespace Anatawa12.VrcGet
 
             var json = this.settings.Get("userRepos", JsonType.List);
 
-            var used_ids = new HashSet<string>();
+            // VPAI: remove duplicated repository from userRepos so value is Path
+            var used_ids = new Dictionary<string, Path>();
             var took = json;
             this.settings.Put("userRepos", json = new List<object>(took.len()), JsonType.List);
 
             foreach (var (repo, repo_json) in user_repos.Zip(took, (x, y) => (x, y)))
             {
                 var to_add = true;
-                if (repo.id is string id) {
-                    to_add = used_ids.Add(id);
+                if (repo.id is string id)
+                {
+                    if (used_ids.ContainsKey(id))
+                        to_add = false;
+                    else
+                        used_ids.Add(id, repo.local_path);
                 }
                 if (to_add) {
                     // this means new id
@@ -115,7 +120,7 @@ namespace Anatawa12.VrcGet
                 } else { 
                     // this means duplicated id: removed so mark as changed
                     settings_changed = true;
-                    repo_cache.remove_repo(repo.local_path);
+                    if (repo.local_path != used_ids[repo.id]) repo_cache.remove_repo(repo.local_path);
                 }
             }
         }
