@@ -427,16 +427,16 @@ namespace Anatawa12.VrcGet
     static partial class ModStatics
     {
         public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] Path path,
+            [CanBeNull] string remote_url,
             [NotNull] LocalCachedRepository repo)
         {
-            var remoteURL = repo.url();
-            if (remoteURL == null) return;
+            if (remote_url == null) return;
 
             var foundEtag = repo.vrc_get?.etag;
             try
             {
 
-                var result = await download_remote_repository(client, remoteURL, repo.headers(), foundEtag);
+                var result = await download_remote_repository(client, remote_url, repo.headers(), foundEtag);
                 if (result != null)
                 {
                     var (remoteRepo, etag) = result.Value;
@@ -459,7 +459,7 @@ namespace Anatawa12.VrcGet
             }
             catch (Exception e)
             {
-                Debug.LogError($"fetching remote repo '{remoteURL}'");
+                Debug.LogError($"fetching remote repo '{remote_url}'");
                 Debug.LogException(e);
             }
 
