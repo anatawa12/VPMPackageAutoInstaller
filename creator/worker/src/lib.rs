@@ -1,7 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::result;
-use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::json;
 use vpai_creator::create_unitypackage;
 use worker::*;
@@ -13,13 +11,13 @@ fn log_request(req: &Request) {
         "{} - [{}], located at: {:?}, within: {}",
         Date::now().to_string(),
         req.path(),
-        req.cf().coordinates().unwrap_or_default(),
-        req.cf().region().unwrap_or_else(|| "unknown region".into())
+        req.cf().unwrap().coordinates().unwrap_or_default(),
+        req.cf().unwrap().region().unwrap_or_else(|| "unknown region".into())
     );
 }
 
 #[event(fetch)]
-pub async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
+pub async fn main(req: Request, _env: Env, _ctx: Context) -> Result<Response> {
     log_request(&req);
     utils::set_panic_hook();
 

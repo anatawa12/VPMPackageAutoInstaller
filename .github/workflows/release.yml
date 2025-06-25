@@ -163,13 +163,13 @@ jobs:
 
   publish-cloudflare-workers:
     runs-on: ubuntu-latest
-    if: inputs.publish || inputs.publish-workers
+    if: inputs.publish || inputs.publish-worker
     needs: create-release
     environment: cloudflare workers
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: v${{ needs.create-release.outputs.version }}
+          ref: ${{ inputs.publish && format('v{0}', needs.create-release.outputs.version) || 'master' }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
