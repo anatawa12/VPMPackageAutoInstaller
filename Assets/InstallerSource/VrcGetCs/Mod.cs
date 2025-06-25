@@ -79,7 +79,7 @@ namespace Anatawa12.VrcGet
             {
                 var repo = user_repos[i];
                 var loaded = this.repo_cache.get_repo(repo.local_path);
-                System.Diagnostics.Debug.Assert(loaded != null, nameof(loaded) + " != null");
+                if (loaded == null) continue;
                 var id = loaded.id() ?? loaded.url() ?? repo.url;
                 if (id != repo.id) {
                     repo.id = id;
@@ -317,7 +317,7 @@ namespace Anatawa12.VrcGet
                 PendingRepositories.RemoveAt(i);
 
                 var localCache = repo_cache.get_repo(localPath);
-                System.Diagnostics.Debug.Assert(localCache != null, nameof(localCache) + " != null");
+                Debug.Assert(localCache != null, nameof(localCache) + " != null");
                 await write_repo(localPath, localCache);
                 add_user_repo(new UserRepoSetting(localPath, localCache.name(), localCache.url(), localCache.id()));                
             }
@@ -893,12 +893,12 @@ namespace Anatawa12.VrcGet
                     break;
                 case LegacyInfo.KindFoundFile:
                     path = info.Path.strip_prefix(project_dir);
-                    System.Diagnostics.Debug.Assert(path != null, "path != null");
+                    Debug.Assert(path != null, "path != null");
                     found_files.Add(path);
                     break;
                 case LegacyInfo.KindFoundFolder:
                     path = info.Path.strip_prefix(project_dir);
-                    System.Diagnostics.Debug.Assert(path != null, "path != null");
+                    Debug.Assert(path != null, "path != null");
                     found_folders.Add(path);
                     break;
                 case LegacyInfo.KindGuidFile:
