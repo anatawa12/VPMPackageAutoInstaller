@@ -24,7 +24,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 var type = assembly.GetType("Unity.Burst.Editor.BurstLoader");
                 var prop = type.GetProperty("IsDebugging",
                     BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                System.Diagnostics.Debug.Assert(prop != null, nameof(prop) + " != null");
+                Debug.Assert(prop != null, nameof(prop) + " != null");
                 prop.GetValue(null);
             }
             catch
@@ -139,7 +139,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
                 new[] { typeof(string), typeof(string) },
                 null);
 
-            System.Diagnostics.Debug.Assert(sendCommandToCompilerMethod != null,
+            Debug.Assert(sendCommandToCompilerMethod != null,
                 nameof(sendCommandToCompilerMethod) + " != null");
 
             sendCommandToCompilerMethod.Invoke(null,

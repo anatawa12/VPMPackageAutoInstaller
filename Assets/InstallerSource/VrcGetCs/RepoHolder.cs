@@ -94,7 +94,7 @@ namespace Anatawa12.VrcGet
                 if (client == null) throw new OfflineModeException();
 
                 var may_null = await download_remote_repository(client, remote_url, headers, null);
-                System.Diagnostics.Debug.Assert(may_null != null, nameof(may_null) + " != null");
+                Debug.Assert(may_null != null, nameof(may_null) + " != null");
                 var (remote_repo, etag) = may_null.Value;
 
                 var local_cache = new LocalCachedRepository(remote_repo, headers ?? new Dictionary<string, string>());
