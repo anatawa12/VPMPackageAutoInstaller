@@ -18,7 +18,7 @@
  * If you changed this file, you may also need to update Creator.cs
  */
 
-let INSTALLER_VERSION = "1.1.5";
+let INSTALLER_VERSION = "1.1.6-SNAPSHOT";
 
 // initialize wasm module
 let wasm_array = await wasm_binary();
