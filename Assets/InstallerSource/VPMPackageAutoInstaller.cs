@@ -187,6 +187,7 @@ namespace Anatawa12.VpmPackageAutoInstaller
             VrcGet.PartialUnityVersion min_unity_version = null;
             var dependencies = config.VpmDependencies.SelectMany(kvp =>
             {
+                var exact = Version.TryParse(kvp.Value.ToString(), out _);
                 var package = env.find_package_by_name(kvp.Key, VrcGet.PackageSelector.range_for_pre(unityProject.unity_version, kvp.Value, includePrerelease));
                 if (package == null)
                 {
@@ -194,9 +195,9 @@ namespace Anatawa12.VpmPackageAutoInstaller
                     if (withoutUnity == null)
                         throw new Exception($"package not found: {kvp.Key} version {kvp.Value}");
                     unityIncompatibles[kvp.Key] = kvp.Value;
-                    return Array.Empty<VrcGet.PackageInfo>();
+                    return Array.Empty<(VrcGet.PackageInfo, bool)>();
                 }
-                return new[] { package.Value };
+                return new[] { (package.Value, exact) };
             }).ToList();
 
             if (unityIncompatibles.Count != 0)
