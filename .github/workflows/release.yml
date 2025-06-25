@@ -184,6 +184,7 @@ jobs:
         env:
           TEMPLATE_UNITYPACKAGE_PATH: ${{ github.workspace }}/build/installer-template.unitypackage
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         working-directory: creator/worker
         run: |-
           npx wrangler deploy
