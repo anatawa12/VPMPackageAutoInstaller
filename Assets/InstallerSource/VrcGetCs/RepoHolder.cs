@@ -88,7 +88,7 @@ namespace Anatawa12.VrcGet
             [NotNull] string remote_url
         )
         {
-            return await load_repo(path, client, async () =>
+            return await load_repo(path, client, remote_url, async () =>
             {
                 // if local repository not found: try downloading remote one
                 if (client == null) throw new OfflineModeException();
@@ -124,12 +124,13 @@ namespace Anatawa12.VrcGet
             [NotNull] Path path
         )
         {
-            return await load_repo(path, client, () => throw new IOException("repository not found"));
+            return await load_repo(path, client, null, () => throw new IOException("repository not found"));
         }
 
         static async Task<LocalCachedRepository> load_repo(
             [NotNull] Path path,
             [CanBeNull] HttpClient http,
+            [CanBeNull] string remote_url,
             Func<Task<LocalCachedRepository>> if_not_found
         )
         {
@@ -148,7 +149,7 @@ namespace Anatawa12.VrcGet
 
             var loaded = new LocalCachedRepository(new JsonParser(text).Parse(JsonType.Obj));
             if (http != null)
-                await update_from_remote(http, path, loaded);
+                await update_from_remote(http, path, remote_url, loaded);
             return loaded;
         }
 

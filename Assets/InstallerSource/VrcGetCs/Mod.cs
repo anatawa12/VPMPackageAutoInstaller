@@ -427,16 +427,16 @@ namespace Anatawa12.VrcGet
     static partial class ModStatics
     {
         public static async Task update_from_remote([CanBeNull] HttpClient client, [NotNull] Path path,
+            [CanBeNull] string remote_url,
             [NotNull] LocalCachedRepository repo)
         {
-            var remoteURL = repo.url();
-            if (remoteURL == null) return;
+            if (remote_url == null) return;
 
             var foundEtag = repo.vrc_get?.etag;
             try
             {
 
-                var result = await download_remote_repository(client, remoteURL, repo.headers(), foundEtag);
+                var result = await download_remote_repository(client, remote_url, repo.headers(), foundEtag);
                 if (result != null)
                 {
                     var (remoteRepo, etag) = result.Value;
@@ -459,7 +459,7 @@ namespace Anatawa12.VrcGet
             }
             catch (Exception e)
             {
-                Debug.LogError($"fetching remote repo '{remoteURL}'");
+                Debug.LogError($"fetching remote repo '{remote_url}'");
                 Debug.LogException(e);
             }
 
@@ -732,16 +732,18 @@ namespace Anatawa12.VrcGet
     }
 
     sealed partial class UnityProject {
+        // VPAI: packages takes pair of (PackageInfo package, bool exact)
         public async Task<AddPackageRequest> add_package_request(
         Environment env,
-        List<PackageInfo> packages,
+        List<(PackageInfo package, bool exact)> packages,
         bool to_dependencies,
         bool allow_prerelease
         ) {
             packages.retain(pkg =>
             {
-                var dep = this.manifest.dependencies().get(pkg.name());
-                return dep == null || dep.version.matches(pkg.version());
+                var dep = this.manifest.dependencies().get(pkg.package.name());
+                var locked = this.manifest.locked().get(pkg.package.name());
+                return dep == null || locked == null || (pkg.exact ? locked.version != pkg.package.version() : dep.version.matches(pkg.package.version()));
             });
 
             // if same or newer requested package is in locked dependencies,
@@ -749,17 +751,18 @@ namespace Anatawa12.VrcGet
             var dependencies = new List<(string, VpmDependency)>();
             var adding_packages = new List<PackageInfo>();
 
-            foreach (var request in packages)
+            foreach (var (request, exact) in packages)
             {
                 var dep = this.manifest.locked().get(request.name());
                 var update = dep == null || dep.version < request.version();
                 var installed = this.installed_packages.ContainsKey(request.name()); // VPAI: install if actual package does not exist
+                var downgrade = exact && dep != null && dep.version != request.version(); // VPAI: downgrade if exact and version is different
 
                 if (to_dependencies) {
                     dependencies.Add((request.name(), new VpmDependency(request.version())));
                 }
 
-                if (update || !installed) {
+                if (update || !installed || downgrade) {
                     adding_packages.Add(request);
                 }
             }
