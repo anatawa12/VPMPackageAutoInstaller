@@ -186,7 +186,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         working-directory: creator/worker
         run: |-
-          npx wrangler publish
+          npx wrangler deploy
 
   publish-vpm:
     uses: anatawa12/vpm.anatawa12.com/.github/workflows/update-package.yml@master
