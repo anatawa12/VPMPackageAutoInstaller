@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using JetBrains.Annotations;
 using SemanticVersioning;
 using Version = SemanticVersioning.Version;
+using Range = SemanticVersioning.Range;
 using SystemPath = System.IO.Path;
 
 namespace Anatawa12.VrcGet
