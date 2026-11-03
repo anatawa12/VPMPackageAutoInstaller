@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using static Anatawa12.VrcGet.CsUtils;
+using SystemPath = System.IO.Path;
 
 namespace Anatawa12.VrcGet
 {
@@ -56,19 +57,126 @@ namespace Anatawa12.VrcGet
             if (zip_file == null)
                 zip_file = await download_zip(http, headers, zip_path, sha_path, zip_file_name, package.url);
 
-            // remove dest folder before extract if exists
-            try
-            {
-                await remove_dir_all(dest_folder);
-            }
-            catch
-            {
-                // ignored
-            }
+            // VPAI: overwrite changed files instead of removing dest folder before extract.
+            // On Windows, native plugins loaded by Unity (e.g. AudioPluginOculusSpatializer.dll in com.vrchat.base)
+            // cannot be deleted. Removing the folder failed halfway and extracting threw on the remaining files,
+            // which left the package broken. Files with the same content are not touched, and files in use are
+            // moved to Temp (it is on the same volume and Unity clears it on exit) before writing the new ones.
+            var trash_folder = SystemPath.Combine(SystemPath.GetDirectoryName(SystemPath.GetFullPath(target_packages_folder.AsString)),
+                "Temp", "com.anatawa12.vpm-package-auto-installer", Guid.NewGuid().ToString("N"));
 
             // extract zip file
             using (var archive = new ZipArchive(zip_file, ZipArchiveMode.Read, false))
-                archive.ExtractToDirectory(dest_folder.AsString);
+                await Task.Run(() => extract_overwriting(archive, dest_folder.AsString, trash_folder));
+        }
+
+        static void extract_overwriting(ZipArchive archive, string dest_folder, string trash_folder)
+        {
+            var root = SystemPath.GetFullPath(dest_folder);
+            Directory.CreateDirectory(root);
+            var extracted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in archive.Entries)
+            {
+                var path = SystemPath.GetFullPath(SystemPath.Combine(root, entry.FullName));
+                if (!path.StartsWith(root + SystemPath.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException($"zip entry is outside of the destination: {entry.FullName}");
+
+                if (entry.Name.Length == 0)
+                {
+                    // directory entry
+                    Directory.CreateDirectory(path);
+                    continue;
+                }
+
+                Directory.CreateDirectory(SystemPath.GetDirectoryName(path));
+                extracted.Add(path);
+                if (File.Exists(path) && same_content(entry, path)) continue;
+
+                try
+                {
+                    write_entry(entry, path);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    move_to_trash(path, root, trash_folder);
+                    write_entry(entry, path);
+                }
+            }
+
+            // remove files which are not in the new version
+            foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+            {
+                if (extracted.Contains(SystemPath.GetFullPath(file))) continue;
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    move_to_trash(file, root, trash_folder);
+                }
+            }
+
+            foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories).OrderByDescending(x => x.Length))
+            {
+                if (Directory.EnumerateFileSystemEntries(dir).Any()) continue;
+                try
+                {
+                    Directory.Delete(dir);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    // ignored
+                }
+            }
+        }
+
+        static bool same_content(ZipArchiveEntry entry, string path)
+        {
+            if (new FileInfo(path).Length != entry.Length) return false;
+            using (var a = entry.Open())
+            using (var b = File.OpenRead(path))
+            {
+                var bufA = new byte[81920];
+                var bufB = new byte[81920];
+                while (true)
+                {
+                    var read = read_fully(a, bufA);
+                    if (read != read_fully(b, bufB)) return false;
+                    if (read == 0) return true;
+                    for (var i = 0; i < read; i++)
+                        if (bufA[i] != bufB[i]) return false;
+                }
+            }
+        }
+
+        static int read_fully(Stream stream, byte[] buffer)
+        {
+            var total = 0;
+            while (total < buffer.Length)
+            {
+                var read = stream.Read(buffer, total, buffer.Length - total);
+                if (read == 0) break;
+                total += read;
+            }
+            return total;
+        }
+
+        static void write_entry(ZipArchiveEntry entry, string path)
+        {
+            using (var source = entry.Open())
+            using (var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+                source.CopyTo(file);
+            File.SetLastWriteTime(path, entry.LastWriteTime.DateTime);
+        }
+
+        // a file loaded by Unity cannot be deleted or overwritten on Windows, but can be moved on the same volume
+        static void move_to_trash(string path, string root, string trash_folder)
+        {
+            var moved = SystemPath.Combine(trash_folder, path.Substring(root.Length + 1));
+            Directory.CreateDirectory(SystemPath.GetDirectoryName(moved));
+            File.Move(path, moved);
         }
 
         /// Try to load from the zip file
